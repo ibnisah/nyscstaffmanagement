@@ -951,3 +951,16 @@ table tr:hover {
     padding: 1rem;
   }
 }
+
+/* Staff create/edit cards: single column on mobile/small views (stacked, inline) */
+.staff-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 768px) {
+  .staff-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

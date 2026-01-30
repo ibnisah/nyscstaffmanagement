@@ -3156,7 +3156,7 @@ const AdminPage = (function () {
         <p style="text-align: left; color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
           <strong>Note:</strong> Employee ID will be automatically generated. Formation and Department can be added later.
         </p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+        <div class="staff-form-grid">
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Surname *</label>
             <input id="swalStaffSurname" class="swal2-input" placeholder="Surname" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
@@ -3392,7 +3392,7 @@ const AdminPage = (function () {
           <input type="file" id="swalStaffProfilePhoto" accept="image/jpeg,image/png,image/webp,image/jpg" style="width: 100%; padding: 0.5rem;">
         </div>
         ` : ''}
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+        <div class="staff-form-grid">
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Marital Status</label>
             <select id="swalStaffMaritalStatus" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
@@ -4312,7 +4312,7 @@ const AdminPage = (function () {
             </div>
           </div>
           ` : ''}
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+          <div class="staff-form-grid">
             <div>
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">File Number</label>
               <input id="swalEditFileNumber" class="swal2-input" placeholder="File Number" value="${staff.fileNumber || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
