@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NYSC Staff and Visitor Management System</title>
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png" />
+    <link rel="icon" type="image/png" sizes="150x150" href="mstile-150x150.png" />
+
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="navbar-brand">
+                <div class="logo-container">
+                    <img src="nysclogo.png" alt="NYSC Logo" class="nysc-logo" />
+                    <div class="brand-text-container">
+                        <span class="brand-logo">NYSC</span>
+                        <span class="brand-text">Staff and Visitor Management System</span>
+                    </div>
+                </div>
+            </div>
+            <div class="navbar-links">
+                <a href="index.html" class="nav-link active">Home</a>
+                <a href="admin.html" class="nav-link">Admin Dashboard</a>
+                <a href="verify.html" class="nav-link">Attendance</a>
+                <a href="visitor.html" class="nav-link">Visitor Sign-In</a>
+            </div>
+            <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="hero-overlay"></div>
+        <div class="hero-container">
+            <div class="hero-content">
+                <h1 class="hero-title">National Youth Service Corps Staff and Visitor Management System</h1>
+                <p class="hero-subtitle">
+                    A comprehensive solution for managing staff attendance and visitor sign-ins
+                    across all NYSC formations nationwide.
+                </p>
+                <div class="hero-buttons">
+                    <a href="admin.html" class="btn btn-primary btn-large">Admin Dashboard</a>
+                    <a href="verify.html" class="btn btn-outline btn-large">Sign Attendance</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section">
+        <div class="container">
+            <h2 class="section-title">System Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Attendance Management</h3>
+                    <p>Real-time attendance tracking with GPS location verification and device binding for accurate
+                        records.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">👥</div>
+                    <h3>Visitor Management</h3>
+                    <p>Streamlined visitor registration and approval workflow with email notifications to staff members.
+                    </p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🏢</div>
+                    <h3>Multi-Formation Support</h3>
+                    <p>Manage multiple formations independently with role-based access control and data isolation.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Security & Audit</h3>
+                    <p>Government-grade security with complete audit trails, device fingerprinting, and daily rotating
+                        tokens.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <h3>Mobile Optimized</h3>
+                    <p>Fully responsive design that works seamlessly on all devices - desktop, tablet, and mobile.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <h3>Reports & Analytics</h3>
+                    <p>Comprehensive dashboards with attendance logs, visitor reports, and nationwide statistics.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Access Section -->
+    <section class="quick-access-section">
+        <div class="container">
+            <h2 class="section-title">Quick Access</h2>
+            <div class="access-cards">
+                <a href="admin.html" class="access-card">
+                    <div class="access-icon">🔐</div>
+                    <h3>Admin Dashboard</h3>
+                    <p>Manage employees, view reports, and configure system settings</p>
+                    <span class="access-link">Go to Dashboard →</span>
+                </a>
+                <a href="verify.html" class="access-card">
+                    <div class="access-icon">✅</div>
+                    <h3>Sign Attendance</h3>
+                    <p>Scan QR code and sign your daily attendance</p>
+                    <span class="access-link">Sign In →</span>
+                </a>
+                <a href="register-device.html" class="access-card">
+                    <div class="access-icon">📱</div>
+                    <h3>Register Device</h3>
+                    <p>Bind your device for attendance tracking</p>
+                    <span class="access-link">Register →</span>
+                </a>
+                <a href="visitor.html" class="access-card">
+                    <div class="access-icon">👤</div>
+                    <h3>Visitor Sign-In</h3>
+                    <p>Register as a visitor to the office</p>
+                    <span class="access-link">Sign In →</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-logo-container">
+                        <img src="nysclogo.png" alt="NYSC Logo" class="footer-logo" />
+                    </div>
+                    <h3 class="footer-title">NYSC</h3>
+                    <p class="footer-text">
+                        National Youth Service Corps<br>
+                        Staff and Visitor Management System
+                    </p>
+                </div>
+                <div class="footer-section">
+                    <h4 class="footer-heading">Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="admin.html">Admin Dashboard</a></li>
+                        <li><a href="verify.html">Attendance</a></li>
+                        <li><a href="visitor.html">Visitor Sign-In</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4 class="footer-heading">Contact</h4>
+                    <ul class="footer-links">
+                        <li>Plot 416, Tigris Crescent</li>
+                        <li>Maitama, Abuja, Nigeria</li>
+                        <li>Email: info@nysc.gov.ng</li>
+                        <li>Website: <a href="https://www.nysc.gov.ng" target="_blank">www.nysc.gov.ng</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4 class="footer-heading">System Info</h4>
+                    <ul class="footer-links">
+                        <li>Version 1.0</li>
+                        <li>Government-Grade Security</li>
+                        <li>Multi-Formation Support</li>
+                        <li>24/7 Availability</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 National Youth Service Corps (NYSC). All rights reserved.</p>
+                <div class="footer-social">
+                    <a href="https://www.nysc.gov.ng" target="_blank" aria-label="NYSC Website">Official Website</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile navigation toggle
+        document.getElementById('navbarToggle')?.addEventListener('click', function () {
+            const navbar = document.querySelector('.navbar-links');
+            navbar.classList.toggle('active');
+        });
+    </script>
+</body>
+</html>

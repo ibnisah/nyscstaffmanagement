@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Attendance Verification - NYSC</title>
+  
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png" />
+  
+  <link rel="stylesheet" href="styles.css" />
+  
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-brand">
+        <div class="logo-container">
+          <img src="nysclogo.png" alt="NYSC Logo" class="nysc-logo" />
+          <div class="brand-text-container">
+            <span class="brand-logo">NYSC</span>
+            <span class="brand-text">Staff and Visitor Management System</span>
+          </div>
+        </div>
+      </div>
+      <div class="navbar-links">
+        <a href="index.html" class="nav-link">Home</a>
+        <a href="admin.html" class="nav-link">Admin Dashboard</a>
+        <a href="verify.html" class="nav-link active">Attendance</a>
+        <a href="visitor.html" class="nav-link">Visitor Sign-In</a>
+      </div>
+      <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="page page-verify">
+    <section class="card">
+      <h1>Employee Attendance</h1>
+      <p class="subtitle">Scan today&apos;s QR code to mark your attendance.</p>
+
+      <div id="pre-location-warning" class="info info-warning">
+        <h2>Location Required</h2>
+        <p>Attendance will fail if location is not allowed.</p>
+        <button id="startAttendanceBtn" class="btn btn-primary">
+          Continue and Allow Location
+        </button>
+      </div>
+
+      <div id="attendance-form" class="hidden">
+        <p class="info info-muted">
+          Location and device will be verified. Do not close this page.
+        </p>
+        <form id="verifyAttendanceForm">
+          <input type="hidden" id="token" name="token" />
+          <label class="field">
+            <span>Employee ID</span>
+            <input type="text" id="employeeId" name="employeeId" required />
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">
+            Mark Attendance
+          </button>
+        </form>
+      </div>
+
+      <div id="statusArea" class="status"></div>
+    </section>
+  </main>
+
+  <script src="js/geo.js"></script>
+  <script src="js/fingerprint.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      AttendancePage.init();
+    });
+  </script>
+  
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <div class="footer-logo-container">
+            <img src="nysclogo.png" alt="NYSC Logo" class="footer-logo" />
+          </div>
+          <h3 class="footer-title">NYSC</h3>
+          <p class="footer-text">
+            National Youth Service Corps<br>
+            Staff and Visitor Management System
+          </p>
+        </div>
+        <div class="footer-section">
+          <h4 class="footer-heading">Quick Links</h4>
+          <ul class="footer-links">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="admin.html">Admin Dashboard</a></li>
+            <li><a href="verify.html">Attendance</a></li>
+            <li><a href="visitor.html">Visitor Sign-In</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h4 class="footer-heading">Contact</h4>
+          <ul class="footer-links">
+            <li>Plot 416, Tigris Crescent</li>
+            <li>Maitama, Abuja, Nigeria</li>
+            <li>Email: info@nysc.gov.ng</li>
+            <li>Website: <a href="https://www.nysc.gov.ng" target="_blank">www.nysc.gov.ng</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h4 class="footer-heading">System Info</h4>
+          <ul class="footer-links">
+            <li>Version 1.0</li>
+            <li>Government-Grade Security</li>
+            <li>Multi-Formation Support</li>
+            <li>24/7 Availability</li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2025 National Youth Service Corps (NYSC). All rights reserved.</p>
+        <div class="footer-social">
+          <a href="https://www.nysc.gov.ng" target="_blank" aria-label="NYSC Website">Official Website</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+  
+  <script>
+    // Mobile navigation toggle
+    document.getElementById('navbarToggle')?.addEventListener('click', function() {
+      const navbar = document.querySelector('.navbar-links');
+      navbar.classList.toggle('active');
+    });
+  </script>
+</body>
+</html>
+

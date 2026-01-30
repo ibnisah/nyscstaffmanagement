@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Script Load Test</title>
+</head>
+<body>
+    <h1>Script Loading Test</h1>
+    <div id="results"></div>
+    
+    <script src="js/api.js"></script>
+    <script>
+        console.log('API loaded:', typeof Api !== 'undefined' ? 'YES' : 'NO');
+    </script>
+    
+    <script src="js/ui.js"></script>
+    <script>
+        console.log('UI loaded:', typeof UI !== 'undefined' ? 'YES' : 'NO');
+        console.log('AdminPage loaded:', typeof AdminPage !== 'undefined' ? 'YES' : 'NO');
+        console.log('AttendancePage loaded:', typeof AttendancePage !== 'undefined' ? 'YES' : 'NO');
+        console.log('VisitorPage loaded:', typeof VisitorPage !== 'undefined' ? 'YES' : 'NO');
+        console.log('RegisterDevicePage loaded:', typeof RegisterDevicePage !== 'undefined' ? 'YES' : 'NO');
+        
+        const results = document.getElementById('results');
+        results.innerHTML = `
+            <p>API: ${typeof Api !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+            <p>UI: ${typeof UI !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+            <p>AdminPage: ${typeof AdminPage !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+            <p>AttendancePage: ${typeof AttendancePage !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+            <p>VisitorPage: ${typeof VisitorPage !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+            <p>RegisterDevicePage: ${typeof RegisterDevicePage !== 'undefined' ? '✅ Loaded' : '❌ Not Loaded'}</p>
+        `;
+    </script>
+</body>
+</html>
