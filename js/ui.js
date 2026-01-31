@@ -2708,9 +2708,9 @@ const AdminPage = (function () {
             width: '500px'
           });
 
-          // If user clicks VIEW DOCUMENTS, open the staff profile with documents
+          // If user clicks VIEW DOCUMENTS, open the full staff profile
           if (uploadResult.isConfirmed) {
-            await viewStaffProfile(employeeId);
+            await showFullStaffProfile(employeeId);
           }
         } else {
           throw new Error(res.message || 'Upload failed');
@@ -3732,7 +3732,7 @@ const AdminPage = (function () {
           <td>${departmentName}</td>
           <td><span class="badge ${s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${s.status || 'ACTIVE'}</span></td>
           <td style="white-space: nowrap;">
-            <button class="btn btn-xs btn-primary" onclick="AdminPage.viewStaffProfile('${s.employeeId}')" title="View full details and documents">View</button>
+            <button class="btn btn-xs btn-primary" onclick="AdminPage.showFullStaffProfile('${s.employeeId}')" title="View full profile">View</button>
             <button class="btn btn-xs btn-secondary" onclick="AdminPage.editStaff('${s.employeeId}')" title="Edit staff record">Edit</button>
             ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger" onclick="AdminPage.archiveStaffConfirm('${s.employeeId}')" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success" onclick="AdminPage.unarchiveStaff('${s.employeeId}')" title="Restore archived record">Restore</button>`}
           </td>
@@ -3955,7 +3955,7 @@ const AdminPage = (function () {
         width: '600px',
         html: `
           <div style="text-align: left;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="swal-mobile-stack">
               <div><strong>File Number:</strong> ${staff.fileNumber || 'N/A'}</div>
               <div><strong>Surname:</strong> ${staff.surname || 'N/A'}</div>
               <div><strong>Other Names:</strong> ${staff.otherNames || 'N/A'}</div>
@@ -4092,12 +4092,101 @@ const AdminPage = (function () {
       const canEdit = adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN';
       const canArchive = canEdit;
 
+      const SERVICE_RECORD_TAB_CONFIG = {
+        appointments: {
+          tableColumns: [
+            { key: 'appointmentType', label: 'Type' }, { key: 'designation', label: 'Designation' },
+            { key: 'gradeLevel', label: 'Grade' }, { key: 'step', label: 'Step' },
+            { key: 'dateOfAppointment', label: 'Date of Appointment' }, { key: 'effectiveDate', label: 'Effective Date' },
+            { key: 'authority', label: 'Authority' }, { key: 'remarks', label: 'Remarks' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'appointmentType', label: 'Appointment Type', type: 'text' }, { key: 'designation', label: 'Designation', type: 'text' },
+            { key: 'gradeLevel', label: 'Grade Level', type: 'text' }, { key: 'step', label: 'Step', type: 'text' },
+            { key: 'dateOfAppointment', label: 'Date of Appointment', type: 'text' }, { key: 'effectiveDate', label: 'Effective Date', type: 'text' },
+            { key: 'authority', label: 'Authority', type: 'text' }, { key: 'remarks', label: 'Remarks', type: 'textarea' }
+          ]
+        },
+        postings: {
+          tableColumns: [
+            { key: 'fromLocation', label: 'From' }, { key: 'toLocation', label: 'To' },
+            { key: 'dateOfPosting', label: 'Date of Posting' }, { key: 'effectiveDate', label: 'Effective Date' },
+            { key: 'reason', label: 'Reason' }, { key: 'authority', label: 'Authority' }, { key: 'remarks', label: 'Remarks' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'fromSubUnitId', label: 'From Sub-Unit ID', type: 'text' }, { key: 'toSubUnitId', label: 'To Sub-Unit ID', type: 'text' },
+            { key: 'fromLocation', label: 'From Location', type: 'text' }, { key: 'toLocation', label: 'To Location', type: 'text' },
+            { key: 'dateOfPosting', label: 'Date of Posting', type: 'text' }, { key: 'effectiveDate', label: 'Effective Date', type: 'text' },
+            { key: 'reason', label: 'Reason', type: 'text' }, { key: 'authority', label: 'Authority', type: 'text' }, { key: 'remarks', label: 'Remarks', type: 'textarea' }
+          ]
+        },
+        leaveRecords: {
+          tableColumns: [
+            { key: 'leaveType', label: 'Leave Type' }, { key: 'startDate', label: 'Start' }, { key: 'endDate', label: 'End' },
+            { key: 'daysTaken', label: 'Days' }, { key: 'balanceBefore', label: 'Balance Before' }, { key: 'balanceAfter', label: 'Balance After' },
+            { key: 'approvalRef', label: 'Approval Ref' }, { key: 'remarks', label: 'Remarks' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'leaveType', label: 'Leave Type', type: 'text' }, { key: 'startDate', label: 'Start Date', type: 'text' }, { key: 'endDate', label: 'End Date', type: 'text' },
+            { key: 'daysTaken', label: 'Days Taken', type: 'text' }, { key: 'balanceBefore', label: 'Balance Before', type: 'text' }, { key: 'balanceAfter', label: 'Balance After', type: 'text' },
+            { key: 'approvalRef', label: 'Approval Ref', type: 'text' }, { key: 'remarks', label: 'Remarks', type: 'textarea' }
+          ]
+        },
+        emoluments: {
+          tableColumns: [
+            { key: 'periodFrom', label: 'Period From' }, { key: 'periodTo', label: 'Period To' },
+            { key: 'basicSalary', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'deductions', label: 'Deductions' }, { key: 'netPay', label: 'Net Pay' },
+            { key: 'payRef', label: 'Pay Ref' }, { key: 'remarks', label: 'Remarks' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'periodFrom', label: 'Period From', type: 'text' }, { key: 'periodTo', label: 'Period To', type: 'text' },
+            { key: 'basicSalary', label: 'Basic Salary', type: 'text' }, { key: 'allowances', label: 'Allowances', type: 'text' },
+            { key: 'deductions', label: 'Deductions', type: 'text' }, { key: 'netPay', label: 'Net Pay', type: 'text' },
+            { key: 'payRef', label: 'Pay Ref', type: 'text' }, { key: 'remarks', label: 'Remarks', type: 'textarea' }
+          ]
+        },
+        serviceNotes: {
+          tableColumns: [
+            { key: 'noteType', label: 'Type' }, { key: 'subject', label: 'Subject' }, { key: 'dateOfNote', label: 'Date' },
+            { key: 'author', label: 'Author' }, { key: 'visibility', label: 'Visibility' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'noteType', label: 'Note Type', type: 'text' }, { key: 'subject', label: 'Subject', type: 'text' },
+            { key: 'body', label: 'Body', type: 'textarea' }, { key: 'dateOfNote', label: 'Date of Note', type: 'text' },
+            { key: 'author', label: 'Author', type: 'text' }, { key: 'visibility', label: 'Visibility', type: 'text' }
+          ]
+        },
+        exitRecords: {
+          tableColumns: [
+            { key: 'exitType', label: 'Exit Type' }, { key: 'lastWorkingDate', label: 'Last Working Date' }, { key: 'effectiveDate', label: 'Effective Date' },
+            { key: 'handoverNotes', label: 'Handover' }, { key: 'clearanceStatus', label: 'Clearance' }, { key: 'authority', label: 'Authority' },
+            { key: 'remarks', label: 'Remarks' }, { key: 'createdAt', label: 'Created' }
+          ],
+          addFields: [
+            { key: 'exitType', label: 'Exit Type', type: 'text' }, { key: 'lastWorkingDate', label: 'Last Working Date', type: 'text' },
+            { key: 'effectiveDate', label: 'Effective Date', type: 'text' }, { key: 'handoverNotes', label: 'Handover Notes', type: 'textarea' },
+            { key: 'clearanceStatus', label: 'Clearance Status', type: 'text' }, { key: 'authority', label: 'Authority', type: 'text' }, { key: 'remarks', label: 'Remarks', type: 'textarea' }
+          ]
+        }
+      };
+
       UI.closeLoading();
       const result = await Swal.fire({
         title: 'Full Staff Profile',
         width: '1000px',
         html: `
           <div id="fullStaffProfileContent" style="text-align: left; max-height: 80vh; overflow-y: auto;">
+            <div class="staff-profile-tabs">
+              <div class="staff-profile-tab-bar">
+                <button type="button" class="staff-profile-tab active" data-tab="overview">Overview</button>
+                <button type="button" class="staff-profile-tab" data-tab="appointments">Appointments</button>
+                <button type="button" class="staff-profile-tab" data-tab="postings">Postings</button>
+                <button type="button" class="staff-profile-tab" data-tab="leaveRecords">Leave</button>
+                <button type="button" class="staff-profile-tab" data-tab="emoluments">Emoluments</button>
+                <button type="button" class="staff-profile-tab" data-tab="serviceNotes">Service Notes</button>
+                <button type="button" class="staff-profile-tab" data-tab="exitRecords">Exit Records</button>
+              </div>
+              <div id="staffProfilePanelOverview" class="staff-profile-panel active">
             <div style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 8px;">
               <div style="flex-shrink: 0; width: 120px; height: 120px; background: #e5e7eb; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 0.85rem;">
                 <img id="fullStaffProfilePhotoImg" src="" alt="Profile" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" />
@@ -4107,7 +4196,7 @@ const AdminPage = (function () {
                 <p style="margin: 0; color: #666; font-size: 0.9rem;">${staff.fileNumber ? 'File: ' + staff.fileNumber : ''} ${staff.cadre ? ' • ' + staff.cadre : ''}</p>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="swal-mobile-stack">
               <h3 style="grid-column: 1 / -1; margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Basic Information</h3>
               <div><strong>File Number:</strong> ${staff.fileNumber || 'N/A'}</div>
               <div><strong>IPPIS Number:</strong> ${staff.ippisNumber || 'N/A'}</div>
@@ -4128,14 +4217,14 @@ const AdminPage = (function () {
               <div><strong>Status:</strong> <span class="badge ${staff.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${staff.status || 'ACTIVE'}</span></div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="swal-mobile-stack">
               <h3 style="grid-column: 1 / -1; margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Appointment Information</h3>
               <div><strong>Date of First Appointment:</strong> ${formatDate(staff.dateOfFirstAppointment)}</div>
               <div><strong>Date of Present Appointment:</strong> ${formatDate(staff.dateOfPresentAppointment)}</div>
               <div><strong>Confirmation Date:</strong> ${formatDate(staff.confirmationDate)}</div>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="swal-mobile-stack">
               <h3 style="grid-column: 1 / -1; margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Personal Information</h3>
               <div><strong>Marital Status:</strong> ${staff.maritalStatus || 'N/A'}</div>
               <div><strong>Spouse Name:</strong> ${staff.spouseName || 'N/A'}</div>
@@ -4166,10 +4255,37 @@ const AdminPage = (function () {
             </div>
 
             <div style="text-align: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e5e7eb;">
-              <div style="display: flex; gap: 1rem; justify-content: center;">
+              <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                ${(adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_VIEWER') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
                 ${canEdit ? `<button id="editStaffBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Edit Record</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem;">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
+              </div>
+            </div>
+              </div>
+              <div id="staffProfilePanelAppointments" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsAppointmentsHead"></tr></thead><tbody id="serviceRecordsAppointmentsBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addAppointmentsBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
+              </div>
+              <div id="staffProfilePanelPostings" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsPostingsHead"></tr></thead><tbody id="serviceRecordsPostingsBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addPostingsBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
+              </div>
+              <div id="staffProfilePanelLeaveRecords" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsLeaveRecordsHead"></tr></thead><tbody id="serviceRecordsLeaveRecordsBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addLeaveRecordsBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
+              </div>
+              <div id="staffProfilePanelEmoluments" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsEmolumentsHead"></tr></thead><tbody id="serviceRecordsEmolumentsBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addEmolumentsBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
+              </div>
+              <div id="staffProfilePanelServiceNotes" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsServiceNotesHead"></tr></thead><tbody id="serviceRecordsServiceNotesBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addServiceNotesBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
+              </div>
+              <div id="staffProfilePanelExitRecords" class="staff-profile-panel">
+                <div class="table-wrapper"><table class="data-table"><thead><tr id="serviceRecordsExitRecordsHead"></tr></thead><tbody id="serviceRecordsExitRecordsBody"></tbody></table></div>
+                ${canEdit ? '<button type="button" id="addExitRecordsBtn" class="btn btn-primary service-records-add">Add Entry</button>' : ''}
               </div>
             </div>
           </div>
@@ -4198,6 +4314,17 @@ const AdminPage = (function () {
           const archiveBtn = document.getElementById('archiveStaffBtn');
           const uploadDocBtn = document.getElementById('uploadDocBtn');
           const viewDocsBtn = document.getElementById('viewDocsBtn');
+          const viewRecordOfServiceBtn = document.getElementById('viewRecordOfServiceBtn');
+
+          if (viewRecordOfServiceBtn) {
+            viewRecordOfServiceBtn.addEventListener('click', async () => {
+              try {
+                await showRecordOfService(employeeId);
+              } catch (e) {
+                await UI.showError('Error', e.message || 'Failed to load Record of Service.');
+              }
+            });
+          }
 
           if (editBtn) {
             editBtn.addEventListener('click', () => {
@@ -4230,11 +4357,281 @@ const AdminPage = (function () {
               showEmployeeDocuments(employeeId);
             });
           }
+
+          const loadedTabs = new Set();
+          const recordTypeToPanelId = {
+            appointments: 'staffProfilePanelAppointments',
+            postings: 'staffProfilePanelPostings',
+            leaveRecords: 'staffProfilePanelLeaveRecords',
+            emoluments: 'staffProfilePanelEmoluments',
+            serviceNotes: 'staffProfilePanelServiceNotes',
+            exitRecords: 'staffProfilePanelExitRecords'
+          };
+
+          async function loadServiceRecordsTab(recordType) {
+            const config = SERVICE_RECORD_TAB_CONFIG[recordType];
+            if (!config) return;
+            const headEl = document.getElementById('serviceRecords' + recordType.charAt(0).toUpperCase() + recordType.slice(1) + 'Head');
+            const bodyEl = document.getElementById('serviceRecords' + recordType.charAt(0).toUpperCase() + recordType.slice(1) + 'Body');
+            if (!headEl || !bodyEl) return;
+            try {
+              const res = await Api.call('getServiceRecords', { key: adminKey, recordType, employeeId });
+              const records = (res && res.success && res.data && res.data.records) ? res.data.records : [];
+              headEl.innerHTML = config.tableColumns.map(c => '<th>' + (c.label || c.key) + '</th>').join('');
+              if (records.length === 0) {
+                bodyEl.innerHTML = '<tr><td colspan="' + config.tableColumns.length + '">No records.</td></tr>';
+              } else {
+                bodyEl.innerHTML = records.map(rec => {
+                  return '<tr>' + config.tableColumns.map(col => {
+                    let val = rec[col.key];
+                    if (val === undefined) val = rec[col.key.replace(/([A-Z])/g, '_$1').toLowerCase()] ?? '';
+                    const text = (val !== null && val !== undefined) ? String(val) : '';
+                    const display = col.key === 'body' && text.length > 80 ? text.slice(0, 80) + '…' : text;
+                    return '<td>' + (display.replace(/</g, '&lt;').replace(/>/g, '&gt;')) + '</td>';
+                  }).join('') + '</tr>';
+                }).join('');
+              }
+            } catch (e) {
+              bodyEl.innerHTML = '<tr><td colspan="' + config.tableColumns.length + '">Error loading records.</td></tr>';
+            }
+          }
+
+          document.querySelectorAll('.staff-profile-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+              const t = tab.getAttribute('data-tab');
+              document.querySelectorAll('.staff-profile-tab').forEach(x => x.classList.remove('active'));
+              document.querySelectorAll('.staff-profile-panel').forEach(x => x.classList.remove('active'));
+              tab.classList.add('active');
+              const panelId = t === 'overview' ? 'staffProfilePanelOverview' : recordTypeToPanelId[t];
+              const panel = document.getElementById(panelId);
+              if (panel) panel.classList.add('active');
+              if (t !== 'overview' && !loadedTabs.has(t)) {
+                loadedTabs.add(t);
+                loadServiceRecordsTab(t);
+              }
+            });
+          });
+
+          async function openAddServiceRecordForm(recordType) {
+            const config = SERVICE_RECORD_TAB_CONFIG[recordType];
+            if (!config || !config.addFields) return;
+            const inputsHtml = config.addFields.map(f => {
+              const id = 'sr_add_' + recordType + '_' + f.key;
+              if (f.type === 'textarea') {
+                return '<div class="form-group"><label for="' + id + '">' + (f.label || f.key) + '</label><textarea id="' + id + '" class="form-control" rows="3"></textarea></div>';
+              }
+              const type = f.type === 'number' ? 'number' : (f.type === 'date' ? 'date' : 'text');
+              return '<div class="form-group"><label for="' + id + '">' + (f.label || f.key) + '</label><input type="' + type + '" id="' + id + '" class="form-control" /></div>';
+            }).join('');
+            const result = await Swal.fire({
+              title: 'Add ' + recordType.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()),
+              html: '<div style="text-align: left;">' + inputsHtml + '</div>',
+              showCancelButton: true,
+              confirmButtonText: 'Add',
+              preConfirm: () => {
+                const data = {};
+                config.addFields.forEach(f => {
+                  const id = 'sr_add_' + recordType + '_' + f.key;
+                  const el = document.getElementById(id);
+                  data[f.key] = el ? el.value : '';
+                });
+                return { data };
+              }
+            });
+            if (result && result.isConfirmed && result.value && result.value.data) {
+              try {
+                UI.showLoading('Saving', 'Adding record...');
+                const addRes = await Api.call('addServiceRecord', {
+                  key: adminKey,
+                  recordType,
+                  employeeId,
+                  formationId: staff.formationId || '',
+                  data: result.value.data
+                });
+                UI.closeLoading();
+                if (addRes && addRes.success) {
+                  await UI.showSuccess('Record added.');
+                  await loadServiceRecordsTab(recordType);
+                } else {
+                  await UI.showError('Error', addRes?.message || addRes?.reason || 'Failed to add record.');
+                }
+              } catch (err) {
+                UI.closeLoading();
+                await UI.showError('Error', err.message || 'Failed to add record.');
+              }
+            }
+          }
+
+          ['appointments', 'postings', 'leaveRecords', 'emoluments', 'serviceNotes', 'exitRecords'].forEach(recordType => {
+            const btn = document.getElementById('add' + recordType.charAt(0).toUpperCase() + recordType.slice(1) + 'Btn');
+            if (btn) btn.addEventListener('click', () => openAddServiceRecordForm(recordType));
+          });
         }
       });
     } catch (err) {
       UI.closeLoading();
       await UI.showError('Error', err.message || 'Failed to load full staff profile.');
+    }
+  }
+
+  /**
+   * Auto-generated Record of Service: fetch staff + all service records, render NYSC-style printable HTML.
+   * Read-only, real-time. HRM_ADMIN, SUPER_ADMIN, HRM_VIEWER only.
+   */
+  async function showRecordOfService(employeeId) {
+    if (!adminKey) return;
+    UI.showLoading('Loading', 'Generating Record of Service...');
+    try {
+      const res = await Api.call('getRecordOfService', { key: adminKey, employeeId });
+      UI.closeLoading();
+      if (!res || !res.success || !res.data || !res.data.staff) {
+        await UI.showError('Error', (res && res.message) || (res && res.reason) || 'Staff record not found.');
+        return;
+      }
+      const data = res.data;
+      const staff = data.staff;
+      const esc = (s) => (s == null || s === undefined ? '' : String(s)).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const na = (v) => (v == null || v === undefined || String(v).trim() === '' ? 'N/A' : String(v).trim());
+
+      const section = (title, content) => `<div class="ros-section"><h2 class="ros-heading">${esc(title)}</h2>${content}</div>`;
+      const row = (label, value) => `<tr><td class="ros-label">${esc(label)}</td><td class="ros-value">${esc(na(value))}</td></tr>`;
+      const tableFromRecords = (records, columns) => {
+        if (!records || records.length === 0) return '<p class="ros-empty">No records.</p>';
+        const headers = columns.map(c => `<th>${esc(c.label)}</th>`).join('');
+        const rows = records.map(rec => {
+          return '<tr>' + columns.map(c => {
+            const val = rec[c.key] != null ? rec[c.key] : (rec[c.keyAlt] != null ? rec[c.keyAlt] : '');
+            return '<td>' + esc(na(val)) + '</td>';
+          }).join('') + '</tr>';
+        }).join('');
+        return '<table class="ros-table"><thead><tr>' + headers + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      };
+
+      const personalHtml = `
+        <table class="ros-info-table">
+          ${row('Full Name', staff.name || ((staff.surname || '') + ' ' + (staff.otherNames || '')).trim())}
+          ${row('File Number', staff.fileNumber)}
+          ${row('IPPIS Number', staff.ippisNumber)}
+          ${row('Date of Birth', staff.dob)}
+          ${row('State of Origin', staff.stateOfOrigin)}
+          ${row('LGA', staff.lga)}
+          ${row('Qualification', staff.qualification)}
+          ${row('Cadre', staff.cadre)}
+          ${row('Rank', staff.rank)}
+          ${row('Grade Level', staff.gradeLevel)}
+          ${row('Date of First Appointment', staff.dateOfFirstAppointment)}
+          ${row('Date of Present Appointment', staff.dateOfPresentAppointment)}
+          ${row('Confirmation Date', staff.confirmationDate)}
+          ${row('Email', staff.email)}
+          ${row('Telephone', staff.telephone)}
+          ${row('Marital Status', staff.maritalStatus)}
+          ${row('Spouse Name', staff.spouseName)}
+          ${row('Home Address', staff.homeAddress)}
+          ${row('Permanent Home Address', staff.permanentHomeAddress)}
+          ${row('Next of Kin', staff.nextOfKin)}
+          ${row('Next of Kin Address', staff.nextOfKinAddress)}
+          ${row('Status', staff.status)}
+        </table>`;
+
+      const appointmentCols = [{ key: 'appointmentType', label: 'Type' }, { key: 'designation', label: 'Designation' }, { key: 'gradeLevel', label: 'Grade' }, { key: 'step', label: 'Step' }, { key: 'dateOfAppointment', label: 'Date of Appointment' }, { key: 'effectiveDate', label: 'Effective Date' }, { key: 'authority', label: 'Authority' }, { key: 'remarks', label: 'Remarks' }];
+      const postingCols = [{ key: 'fromLocation', label: 'From' }, { key: 'toLocation', label: 'To' }, { key: 'dateOfPosting', label: 'Date of Posting' }, { key: 'effectiveDate', label: 'Effective Date' }, { key: 'reason', label: 'Reason' }, { key: 'authority', label: 'Authority' }, { key: 'remarks', label: 'Remarks' }];
+      const leaveCols = [{ key: 'leaveType', label: 'Leave Type' }, { key: 'startDate', label: 'Start' }, { key: 'endDate', label: 'End' }, { key: 'daysTaken', label: 'Days' }, { key: 'balanceBefore', label: 'Balance Before' }, { key: 'balanceAfter', label: 'Balance After' }, { key: 'approvalRef', label: 'Approval Ref' }, { key: 'remarks', label: 'Remarks' }];
+      const emolumentCols = [{ key: 'periodFrom', label: 'Period From' }, { key: 'periodTo', label: 'Period To' }, { key: 'basicSalary', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'deductions', label: 'Deductions' }, { key: 'netPay', label: 'Net Pay' }, { key: 'payRef', label: 'Pay Ref' }, { key: 'remarks', label: 'Remarks' }];
+      const noteCols = [{ key: 'noteType', label: 'Type' }, { key: 'subject', label: 'Subject' }, { key: 'dateOfNote', label: 'Date' }, { key: 'author', label: 'Author' }, { key: 'visibility', label: 'Visibility' }, { key: 'body', label: 'Details' }];
+      const exitCols = [{ key: 'exitType', label: 'Exit Type' }, { key: 'lastWorkingDate', label: 'Last Working Date' }, { key: 'effectiveDate', label: 'Effective Date' }, { key: 'handoverNotes', label: 'Handover' }, { key: 'clearanceStatus', label: 'Clearance' }, { key: 'authority', label: 'Authority' }, { key: 'remarks', label: 'Remarks' }];
+
+      const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Record of Service - ${esc(staff.name || staff.employeeId)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Times New Roman', serif; font-size: 11pt; line-height: 1.4; color: #222; margin: 0; padding: 1.5rem 2rem; max-width: 900px; margin-left: auto; margin-right: auto; }
+    .ros-no-print { margin-bottom: 1rem; }
+    .ros-no-print button { margin-right: 0.5rem; padding: 0.5rem 1rem; cursor: pointer; font-size: 14px; }
+    .ros-title { text-align: center; font-size: 18pt; font-weight: bold; margin-bottom: 0.25rem; color: #047857; }
+    .ros-subtitle { text-align: center; font-size: 14pt; margin-bottom: 1.5rem; color: #333; }
+    .ros-section { margin-bottom: 1.5rem; page-break-inside: avoid; }
+    .ros-heading { font-size: 13pt; font-weight: bold; border-bottom: 2px solid #059669; padding-bottom: 0.35rem; margin: 0 0 0.75rem 0; color: #047857; }
+    .ros-info-table { width: 100%; border-collapse: collapse; }
+    .ros-info-table .ros-label { width: 38%; font-weight: bold; padding: 0.35rem 0.5rem 0.35rem 0; vertical-align: top; color: #374151; }
+    .ros-info-table .ros-value { padding: 0.35rem 0; }
+    .ros-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 10pt; }
+    .ros-table th, .ros-table td { border: 1px solid #d1d5db; padding: 0.4rem 0.5rem; text-align: left; }
+    .ros-table th { background: #f0fdf4; font-weight: bold; color: #065f46; }
+    .ros-table tbody tr:nth-child(even) { background: #f9fafb; }
+    .ros-empty { color: #6b7280; font-style: italic; margin: 0.5rem 0; }
+    @media print {
+      body { padding: 0.5rem 1rem; }
+      .ros-no-print { display: none !important; }
+      .ros-section { page-break-inside: avoid; }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="ros-no-print">
+    <button type="button" onclick="window.print();">Print</button>
+    <button type="button" id="ros-save-pdf-btn">Save as PDF</button>
+    <button type="button" onclick="window.close();">Close</button>
+  </div>
+  <div id="ros-print-content">
+  <h1 class="ros-title">NATIONAL YOUTH SERVICE CORPS</h1>
+  <p class="ros-subtitle">RECORD OF SERVICE</p>
+  ${section('1. Personal Particulars', personalHtml)}
+  ${section('2. Appointment History', tableFromRecords(data.appointments || [], appointmentCols))}
+  ${section('3. Posting / Transfer History', tableFromRecords(data.postings || [], postingCols))}
+  ${section('4. Leave Record', tableFromRecords(data.leaveRecords || [], leaveCols))}
+  ${section('5. Emoluments', tableFromRecords(data.emoluments || [], emolumentCols))}
+  ${section('6. Service Notes', tableFromRecords(data.serviceNotes || [], noteCols))}
+  ${section('7. Exit Record', tableFromRecords(data.exitRecords || [], exitCols))}
+  <p style="margin-top: 2rem; font-size: 9pt; color: #6b7280;">Generated on ${esc(new Date().toLocaleString('en-GB'))} — Read-only, real-time data. No manual input.</p>
+  </div>
+  <script>
+    (function() {
+      var pdfFilename = ${JSON.stringify('Record_of_Service_' + (staff.name || staff.employeeId || 'Staff').replace(/[^a-zA-Z0-9_\-\s]/g, '').replace(/\s+/g, '_').slice(0, 50) + '_' + new Date().toISOString().slice(0, 10) + '.pdf')};
+      document.getElementById('ros-save-pdf-btn').addEventListener('click', function() {
+        var btn = this;
+        var el = document.getElementById('ros-print-content');
+        if (!el || typeof html2pdf === 'undefined') {
+          alert('PDF library not loaded. Please try again or use Print → Save as PDF.');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Generating PDF...';
+        html2pdf().set({
+          margin: 10,
+          filename: pdfFilename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(el).save().then(function() {
+          btn.disabled = false;
+          btn.textContent = 'Save as PDF';
+        }).catch(function() {
+          btn.disabled = false;
+          btn.textContent = 'Save as PDF';
+          alert('PDF generation failed. Use Print → Save as PDF instead.');
+        });
+      });
+    })();
+  </script>
+</body>
+</html>`;
+
+      const w = window.open('', '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+      } else {
+        await UI.showError('Popup blocked', 'Please allow popups for this site to view Record of Service.');
+      }
+    } catch (err) {
+      UI.closeLoading();
+      throw err;
     }
   }
 

@@ -787,6 +787,45 @@ table tr:hover {
   background: var(--background-light);
 }
 
+/* Staff Profile tabs (Full Staff Profile modal) */
+.staff-profile-tabs { text-align: left; }
+.staff-profile-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--border-color);
+}
+.staff-profile-tab {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  background: var(--white);
+  color: var(--text-dark);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.staff-profile-tab:hover {
+  background: var(--background-light);
+  border-color: var(--nysc-green-light);
+}
+.staff-profile-tab.active {
+  background: var(--nysc-green);
+  color: var(--white);
+  border-color: var(--nysc-green);
+}
+.staff-profile-panel {
+  display: none;
+  padding-top: 0.5rem;
+}
+.staff-profile-panel.active {
+  display: block;
+}
+.staff-profile-panel .table-wrapper { margin-top: 0.5rem; }
+.staff-profile-panel .service-records-add { margin-top: 1rem; }
+
 /* Form Styles */
 .form-group {
   margin-bottom: 1.5rem;
@@ -906,6 +945,7 @@ table tr:hover {
     flex-direction: column;
     width: 100%;
     gap: 1rem;
+    align-items: center;
   }
 
   .hero-buttons .btn {
@@ -962,5 +1002,26 @@ table tr:hover {
 @media (max-width: 768px) {
   .staff-form-grid {
     grid-template-columns: 1fr !important;
+  }
+}
+
+/* SweetAlert popups: stack two-column grids on mobile (mobile-friendly modals) */
+.swal-mobile-stack {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 768px) {
+  .swal-mobile-stack {
+    grid-template-columns: 1fr !important;
+  }
+  .swal2-popup {
+    max-width: 95vw !important;
+    width: 95vw !important;
+    margin: 0.5rem !important;
+  }
+  .swal2-html-container {
+    max-width: 100%;
   }
 }
