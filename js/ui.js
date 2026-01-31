@@ -3771,9 +3771,8 @@ const AdminPage = (function () {
    */
   async function downloadStaffRecordsAsCsv() {
     if (!adminKey || (adminRole !== 'HRM_ADMIN' && adminRole !== 'SUPER_ADMIN')) return;
-    const formationIdForExport = (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')
-      ? (currentFormationId || adminFormationId || '')
-      : (currentFormationId || adminFormationId || '');
+    // HRM_ADMIN and SUPER_ADMIN: pass empty formationId to export ALL staff records (same behavior as Super Admin)
+    const formationIdForExport = '';
     const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
     const query = document.getElementById('hrmStaffSearchInput')?.value.trim() || '';
 
