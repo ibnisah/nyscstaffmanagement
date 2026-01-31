@@ -3173,6 +3173,15 @@ const AdminPage = (function () {
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Telephone Number</label>
             <input id="swalStaffTelephone" class="swal2-input" type="tel" placeholder="Telephone Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Gender</label>
+            <select id="swalStaffGender" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <option value="">-- Select Gender --</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
           ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') && formations.length > 0 ? `
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (optional - can be added later)</label>
@@ -3236,6 +3245,50 @@ const AdminPage = (function () {
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Qualification</label>
             <input id="swalStaffQualification" class="swal2-input" placeholder="Educational Qualification" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary Institution Attended</label>
+            <input id="swalStaffTertiaryInstitution" class="swal2-input" placeholder="Tertiary Institution Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: From (Year)</label>
+            <input id="swalStaffTertiaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: To (Year)</label>
+            <input id="swalStaffTertiaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2014" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary School Attended</label>
+            <input id="swalStaffSecondarySchool" class="swal2-input" placeholder="Secondary School Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: From (Year)</label>
+            <input id="swalStaffSecondaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: To (Year)</label>
+            <input id="swalStaffSecondaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary School Attended</label>
+            <input id="swalStaffPrimarySchool" class="swal2-input" placeholder="Primary School Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: From (Year)</label>
+            <input id="swalStaffPrimaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 1998" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: To (Year)</label>
+            <input id="swalStaffPrimaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Pension Fund Administrator (PFA)</label>
+            <input id="swalStaffPfa" class="swal2-input" placeholder="PFA Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">PFA PIN No</label>
+            <input id="swalStaffPfaPinNo" class="swal2-input" placeholder="PFA PIN Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
         </div>
       `,
@@ -3350,6 +3403,18 @@ const AdminPage = (function () {
       const stateOfOriginEl = document.getElementById('swalStaffStateOfOrigin');
       const lgaEl = document.getElementById('swalStaffLga');
       const qualificationEl = document.getElementById('swalStaffQualification');
+      const genderEl = document.getElementById('swalStaffGender');
+      const tertiaryInstitutionEl = document.getElementById('swalStaffTertiaryInstitution');
+      const tertiaryFromYearEl = document.getElementById('swalStaffTertiaryFromYear');
+      const tertiaryToYearEl = document.getElementById('swalStaffTertiaryToYear');
+      const secondarySchoolEl = document.getElementById('swalStaffSecondarySchool');
+      const secondaryFromYearEl = document.getElementById('swalStaffSecondaryFromYear');
+      const secondaryToYearEl = document.getElementById('swalStaffSecondaryToYear');
+      const primarySchoolEl = document.getElementById('swalStaffPrimarySchool');
+      const primaryFromYearEl = document.getElementById('swalStaffPrimaryFromYear');
+      const primaryToYearEl = document.getElementById('swalStaffPrimaryToYear');
+      const pfaEl = document.getElementById('swalStaffPfa');
+      const pfaPinNoEl = document.getElementById('swalStaffPfaPinNo');
 
       step1Data = {
         surname: surname,
@@ -3369,7 +3434,19 @@ const AdminPage = (function () {
         gradeLevel: gradeLevelEl ? gradeLevelEl.value.trim() : '',
         stateOfOrigin: stateOfOriginEl ? stateOfOriginEl.value.trim() : '',
         lga: lgaEl ? lgaEl.value.trim() : '',
-        qualification: qualificationEl ? qualificationEl.value.trim() : ''
+        qualification: qualificationEl ? qualificationEl.value.trim() : '',
+        gender: genderEl ? genderEl.value.trim() : '',
+        tertiaryInstitution: tertiaryInstitutionEl ? tertiaryInstitutionEl.value.trim() : '',
+        tertiaryFromYear: tertiaryFromYearEl ? String(tertiaryFromYearEl.value).trim() : '',
+        tertiaryToYear: tertiaryToYearEl ? String(tertiaryToYearEl.value).trim() : '',
+        secondarySchool: secondarySchoolEl ? secondarySchoolEl.value.trim() : '',
+        secondaryFromYear: secondaryFromYearEl ? String(secondaryFromYearEl.value).trim() : '',
+        secondaryToYear: secondaryToYearEl ? String(secondaryToYearEl.value).trim() : '',
+        primarySchool: primarySchoolEl ? primarySchoolEl.value.trim() : '',
+        primaryFromYear: primaryFromYearEl ? String(primaryFromYearEl.value).trim() : '',
+        primaryToYear: primaryToYearEl ? String(primaryToYearEl.value).trim() : '',
+        pfa: pfaEl ? pfaEl.value.trim() : '',
+        pfaPinNo: pfaPinNoEl ? pfaPinNoEl.value.trim() : ''
       };
     } catch (err) {
       console.error('Error collecting step 1 data:', err);
@@ -3501,6 +3578,18 @@ const AdminPage = (function () {
               stateOfOrigin: step1Data.stateOfOrigin || '',
               lga: step1Data.lga || '',
               qualification: step1Data.qualification || '',
+              gender: step1Data.gender || '',
+              tertiaryInstitution: step1Data.tertiaryInstitution || '',
+              tertiaryFromYear: step1Data.tertiaryFromYear || '',
+              tertiaryToYear: step1Data.tertiaryToYear || '',
+              secondarySchool: step1Data.secondarySchool || '',
+              secondaryFromYear: step1Data.secondaryFromYear || '',
+              secondaryToYear: step1Data.secondaryToYear || '',
+              primarySchool: step1Data.primarySchool || '',
+              primaryFromYear: step1Data.primaryFromYear || '',
+              primaryToYear: step1Data.primaryToYear || '',
+              pfa: step1Data.pfa || '',
+              pfaPinNo: step1Data.pfaPinNo || '',
               maritalStatus: maritalStatus || '',
               spouseName: spouseName || '',
               homeAddress: homeAddress || '',
@@ -4203,6 +4292,7 @@ const AdminPage = (function () {
               <div><strong>Surname:</strong> ${staff.surname || 'N/A'}</div>
               <div><strong>Other Names:</strong> ${staff.otherNames || 'N/A'}</div>
               <div><strong>Full Name:</strong> ${(staff.surname || '') + (staff.otherNames ? ' ' + staff.otherNames : '') || 'N/A'}</div>
+              <div><strong>Gender:</strong> ${staff.gender || 'N/A'}</div>
               <div><strong>Email:</strong> ${staff.email || 'N/A'}</div>
               <div><strong>Telephone:</strong> ${staff.telephone ? String(staff.telephone) : 'N/A'}</div>
               <div><strong>Date of Birth:</strong> ${formatDate(staff.dob)}</div>
@@ -4212,6 +4302,9 @@ const AdminPage = (function () {
               <div><strong>State of Origin:</strong> ${staff.stateOfOrigin || 'N/A'}</div>
               <div><strong>LGA:</strong> ${staff.lga || 'N/A'}</div>
               <div><strong>Qualification:</strong> ${staff.qualification || 'N/A'}</div>
+              <div style="grid-column: 1 / -1;"><strong>Tertiary Institution Attended:</strong> ${staff.tertiaryInstitution || 'N/A'}${(staff.tertiaryFromYear || staff.tertiaryToYear) ? ' (' + (staff.tertiaryFromYear || '') + ' – ' + (staff.tertiaryToYear || '') + ')' : ''}</div>
+              <div style="grid-column: 1 / -1;"><strong>Secondary School Attended:</strong> ${staff.secondarySchool || 'N/A'}${(staff.secondaryFromYear || staff.secondaryToYear) ? ' (' + (staff.secondaryFromYear || '') + ' – ' + (staff.secondaryToYear || '') + ')' : ''}</div>
+              <div style="grid-column: 1 / -1;"><strong>Primary School Attended:</strong> ${staff.primarySchool || 'N/A'}${(staff.primaryFromYear || staff.primaryToYear) ? ' (' + (staff.primaryFromYear || '') + ' – ' + (staff.primaryToYear || '') + ')' : ''}</div>
               <div><strong>Formation:</strong> ${formationName}</div>
               <div><strong>Department/Sub-Unit:</strong> ${departmentName}</div>
               <div><strong>Status:</strong> <span class="badge ${staff.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${staff.status || 'ACTIVE'}</span></div>
@@ -4222,6 +4315,8 @@ const AdminPage = (function () {
               <div><strong>Date of First Appointment:</strong> ${formatDate(staff.dateOfFirstAppointment)}</div>
               <div><strong>Date of Present Appointment:</strong> ${formatDate(staff.dateOfPresentAppointment)}</div>
               <div><strong>Confirmation Date:</strong> ${formatDate(staff.confirmationDate)}</div>
+              <div><strong>Pension Fund Administrator (PFA):</strong> ${staff.pfa || 'N/A'}</div>
+              <div><strong>PFA PIN No:</strong> ${staff.pfaPinNo || 'N/A'}</div>
             </div>
 
             <div class="swal-mobile-stack">
@@ -4512,16 +4607,22 @@ const AdminPage = (function () {
           ${row('Full Name', staff.name || ((staff.surname || '') + ' ' + (staff.otherNames || '')).trim())}
           ${row('File Number', staff.fileNumber)}
           ${row('IPPIS Number', staff.ippisNumber)}
+          ${row('Gender', staff.gender)}
           ${row('Date of Birth', staff.dob)}
           ${row('State of Origin', staff.stateOfOrigin)}
           ${row('LGA', staff.lga)}
           ${row('Qualification', staff.qualification)}
+          ${row('Tertiary Institution Attended', staff.tertiaryInstitution ? (staff.tertiaryInstitution + ((staff.tertiaryFromYear || staff.tertiaryToYear) ? ' (' + (staff.tertiaryFromYear || '') + ' – ' + (staff.tertiaryToYear || '') + ')' : '')) : null)}
+          ${row('Secondary School Attended', staff.secondarySchool ? (staff.secondarySchool + ((staff.secondaryFromYear || staff.secondaryToYear) ? ' (' + (staff.secondaryFromYear || '') + ' – ' + (staff.secondaryToYear || '') + ')' : '')) : null)}
+          ${row('Primary School Attended', staff.primarySchool ? (staff.primarySchool + ((staff.primaryFromYear || staff.primaryToYear) ? ' (' + (staff.primaryFromYear || '') + ' – ' + (staff.primaryToYear || '') + ')' : '')) : null)}
           ${row('Cadre', staff.cadre)}
           ${row('Rank', staff.rank)}
           ${row('Grade Level', staff.gradeLevel)}
           ${row('Date of First Appointment', staff.dateOfFirstAppointment)}
           ${row('Date of Present Appointment', staff.dateOfPresentAppointment)}
           ${row('Confirmation Date', staff.confirmationDate)}
+          ${row('Pension Fund Administrator (PFA)', staff.pfa)}
+          ${row('PFA PIN No', staff.pfaPinNo)}
           ${row('Email', staff.email)}
           ${row('Telephone', staff.telephone)}
           ${row('Marital Status', staff.maritalStatus)}
@@ -4735,6 +4836,15 @@ const AdminPage = (function () {
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Telephone Number</label>
               <input id="swalEditTelephone" class="swal2-input" type="tel" placeholder="Telephone Number" value="${String(staff.telephone || '')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
             </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Gender</label>
+              <select id="swalEditGender" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">-- Select Gender --</option>
+                <option value="Male" ${staff.gender === 'Male' ? 'selected' : ''}>Male</option>
+                <option value="Female" ${staff.gender === 'Female' ? 'selected' : ''}>Female</option>
+                <option value="Other" ${staff.gender === 'Other' ? 'selected' : ''}>Other</option>
+              </select>
+            </div>
             ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') && formations.length > 0 ? `
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (can be changed)</label>
@@ -4768,6 +4878,14 @@ const AdminPage = (function () {
               <input id="swalEditConfirmationDate" class="swal2-input" type="date" placeholder="Confirmation Date" value="${toDateInputValue(staff.confirmationDate)}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
             </div>
             <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Pension Fund Administrator (PFA)</label>
+              <input id="swalEditPfa" class="swal2-input" placeholder="PFA Name" value="${String(staff.pfa || '')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">PFA PIN No</label>
+              <input id="swalEditPfaPinNo" class="swal2-input" placeholder="PFA PIN Number" value="${String(staff.pfaPinNo || '')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Cadre</label>
               <input id="swalEditCadre" class="swal2-input" placeholder="Cadre" value="${staff.cadre || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
             </div>
@@ -4790,6 +4908,42 @@ const AdminPage = (function () {
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Qualification</label>
               <input id="swalEditQualification" class="swal2-input" placeholder="Qualification" value="${staff.qualification || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary Institution Attended</label>
+              <input id="swalEditTertiaryInstitution" class="swal2-input" placeholder="Tertiary Institution Name" value="${staff.tertiaryInstitution || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: From (Year)</label>
+              <input id="swalEditTertiaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" value="${staff.tertiaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: To (Year)</label>
+              <input id="swalEditTertiaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2014" value="${staff.tertiaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary School Attended</label>
+              <input id="swalEditSecondarySchool" class="swal2-input" placeholder="Secondary School Name" value="${staff.secondarySchool || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: From (Year)</label>
+              <input id="swalEditSecondaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" value="${staff.secondaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: To (Year)</label>
+              <input id="swalEditSecondaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" value="${staff.secondaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary School Attended</label>
+              <input id="swalEditPrimarySchool" class="swal2-input" placeholder="Primary School Name" value="${staff.primarySchool || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: From (Year)</label>
+              <input id="swalEditPrimaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 1998" value="${staff.primaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: To (Year)</label>
+              <input id="swalEditPrimaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" value="${staff.primaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
             </div>
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Marital Status</label>
@@ -4917,12 +5071,24 @@ const AdminPage = (function () {
                   const firstAppointmentEl = document.getElementById('swalEditFirstAppointment');
                   const presentAppointmentEl = document.getElementById('swalEditPresentAppointment');
                   const confirmationDateEl = document.getElementById('swalEditConfirmationDate');
+                  const pfaEl = document.getElementById('swalEditPfa');
+                  const pfaPinNoEl = document.getElementById('swalEditPfaPinNo');
                   const cadreEl = document.getElementById('swalEditCadre');
                   const rankEl = document.getElementById('swalEditRank');
                   const gradeLevelEl = document.getElementById('swalEditGradeLevel');
                   const stateOfOriginEl = document.getElementById('swalEditStateOfOrigin');
                   const lgaEl = document.getElementById('swalEditLga');
                   const qualificationEl = document.getElementById('swalEditQualification');
+                  const genderEl = document.getElementById('swalEditGender');
+                  const tertiaryInstitutionEl = document.getElementById('swalEditTertiaryInstitution');
+                  const tertiaryFromYearEl = document.getElementById('swalEditTertiaryFromYear');
+                  const tertiaryToYearEl = document.getElementById('swalEditTertiaryToYear');
+                  const secondarySchoolEl = document.getElementById('swalEditSecondarySchool');
+                  const secondaryFromYearEl = document.getElementById('swalEditSecondaryFromYear');
+                  const secondaryToYearEl = document.getElementById('swalEditSecondaryToYear');
+                  const primarySchoolEl = document.getElementById('swalEditPrimarySchool');
+                  const primaryFromYearEl = document.getElementById('swalEditPrimaryFromYear');
+                  const primaryToYearEl = document.getElementById('swalEditPrimaryToYear');
                   const maritalStatusEl = document.getElementById('swalEditMaritalStatus');
                   const spouseNameEl = document.getElementById('swalEditSpouseName');
                   const homeAddressEl = document.getElementById('swalEditHomeAddress');
@@ -4949,12 +5115,24 @@ const AdminPage = (function () {
                   const firstAppointment = firstAppointmentEl ? firstAppointmentEl.value.trim() : '';
                   const presentAppointment = presentAppointmentEl ? presentAppointmentEl.value.trim() : '';
                   const confirmationDate = confirmationDateEl ? confirmationDateEl.value.trim() : '';
+                  const pfa = pfaEl ? pfaEl.value.trim() : '';
+                  const pfaPinNo = pfaPinNoEl ? pfaPinNoEl.value.trim() : '';
                   const cadre = cadreEl ? cadreEl.value.trim() : '';
                   const rank = rankEl ? rankEl.value.trim() : '';
                   const gradeLevel = gradeLevelEl ? gradeLevelEl.value.trim() : '';
                   const stateOfOrigin = stateOfOriginEl ? stateOfOriginEl.value.trim() : '';
                   const lga = lgaEl ? lgaEl.value.trim() : '';
                   const qualification = qualificationEl ? qualificationEl.value.trim() : '';
+                  const gender = genderEl ? genderEl.value.trim() : '';
+                  const tertiaryInstitution = tertiaryInstitutionEl ? tertiaryInstitutionEl.value.trim() : '';
+                  const tertiaryFromYear = tertiaryFromYearEl ? String(tertiaryFromYearEl.value).trim() : '';
+                  const tertiaryToYear = tertiaryToYearEl ? String(tertiaryToYearEl.value).trim() : '';
+                  const secondarySchool = secondarySchoolEl ? secondarySchoolEl.value.trim() : '';
+                  const secondaryFromYear = secondaryFromYearEl ? String(secondaryFromYearEl.value).trim() : '';
+                  const secondaryToYear = secondaryToYearEl ? String(secondaryToYearEl.value).trim() : '';
+                  const primarySchool = primarySchoolEl ? primarySchoolEl.value.trim() : '';
+                  const primaryFromYear = primaryFromYearEl ? String(primaryFromYearEl.value).trim() : '';
+                  const primaryToYear = primaryToYearEl ? String(primaryToYearEl.value).trim() : '';
                   const maritalStatus = maritalStatusEl ? maritalStatusEl.value.trim() : '';
                   const spouseName = spouseNameEl ? spouseNameEl.value.trim() : '';
                   const homeAddress = homeAddressEl ? homeAddressEl.value.trim() : '';
@@ -4983,12 +5161,24 @@ const AdminPage = (function () {
                         dateOfFirstAppointment: firstAppointment || '',
                         dateOfPresentAppointment: presentAppointment || '',
                         confirmationDate: confirmationDate || '',
+                        pfa: pfa || '',
+                        pfaPinNo: pfaPinNo || '',
                         cadre: cadre || '',
                         rank: rank || '',
                         gradeLevel: gradeLevel || '',
                         stateOfOrigin: stateOfOrigin || '',
                         lga: lga || '',
                         qualification: qualification || '',
+                        gender: gender || '',
+                        tertiaryInstitution: tertiaryInstitution || '',
+                        tertiaryFromYear: tertiaryFromYear || '',
+                        tertiaryToYear: tertiaryToYear || '',
+                        secondarySchool: secondarySchool || '',
+                        secondaryFromYear: secondaryFromYear || '',
+                        secondaryToYear: secondaryToYear || '',
+                        primarySchool: primarySchool || '',
+                        primaryFromYear: primaryFromYear || '',
+                        primaryToYear: primaryToYear || '',
                         maritalStatus: maritalStatus || '',
                         spouseName: spouseName || '',
                         homeAddress: homeAddress || '',
