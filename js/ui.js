@@ -3807,14 +3807,16 @@ const AdminPage = (function () {
       };
 
       const columns = [
-        'employeeId', 'fileNumber', 'ippisNumber', 'surname', 'otherNames', 'email', 'telephone', 'dob',
-        'dateOfFirstAppointment', 'dateOfPresentAppointment', 'confirmationDate',
-        'cadre', 'rank', 'gradeLevel', 'stateOfOrigin', 'lga', 'qualification',
-        'maritalStatus', 'spouseName', 'homeAddress', 'permanentHomeAddress', 'spouseAddress',
-        'nextOfKin', 'nextOfKinAddress', 'formationId', 'subUnitId', 'status'
+        'fileNumber', 'ippisNumber', 'name', 'surname', 'dob', 'otherNames', 'cadre', 'email', 'rank',
+        'telephone', 'gradeLevel', 'stateOfOrigin', 'lga', 'dateOfFirstAppointment', 'dateOfPresentAppointment',
+        'confirmationDate', 'qualification', 'formationId', 'subUnitId'
       ];
-      const header = columns.join(',');
-      const rows = results.map(r => columns.map(c => escapeCsv(r[c])).join(','));
+      const header = 'S/N,' + columns.join(',');
+      const rows = results.map((r, index) => {
+        const sn = index + 1;
+        const values = columns.map(c => escapeCsv(r[c]));
+        return [sn, ...values].join(',');
+      });
       const csv = [header, ...rows].join('\r\n');
       const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
