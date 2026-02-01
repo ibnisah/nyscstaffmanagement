@@ -999,6 +999,7 @@ table tr:hover {
   gap: 1rem;
   margin-bottom: 1rem;
 }
+
 @media (max-width: 768px) {
   .staff-form-grid {
     grid-template-columns: 1fr !important;

@@ -579,17 +579,13 @@ const AdminPage = (function () {
       loadStaffList();
     });
     safeAddEventListener('hrmRefreshStaffBtn', 'click', loadHrmStaffStats);
-    safeAddEventListener('hrmStaffSearchBtn', 'click', () => {
-      loadStaffList(1); // Reset to page 1 on new search
-    });
+    safeAddEventListener('hrmStaffSearchBtn', 'click', () => loadStaffList(1));
     safeAddEventListener('hrmStaffClearSearchBtn', 'click', () => {
       const searchInput = document.getElementById('hrmStaffSearchInput');
       if (searchInput) searchInput.value = '';
       loadStaffList(1);
     });
-    safeAddEventListener('hrmIncludeArchivedCheck', 'change', () => {
-      loadStaffList(1); // Reset to page 1 when filter changes
-    });
+    safeAddEventListener('hrmIncludeArchivedCheck', 'change', () => loadStaffList(1));
   }
 
   function handleLogout() {
@@ -3145,49 +3141,50 @@ const AdminPage = (function () {
       console.warn('Could not load formations/departments:', err);
     }
 
-    // Store step 1 data in a closure variable
     let step1Data = {};
+    let step1InitialData = {};
 
-    // Step 1: Basic Information
-    const step1 = await Swal.fire({
-      title: 'Add Staff Record - Step 1 of 2',
-      width: '800px',
-      html: `
+    // Outer loop: Step 1 can be re-shown when user clicks "Back" on Step 2 (only "Cancel" on Step 1 closes the modal)
+    while (true) {
+      const step1 = await Swal.fire({
+        title: 'Add Staff Record - Step 1 of 2',
+        width: '800px',
+        html: `
         <p style="text-align: left; color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
           <strong>Note:</strong> Employee ID will be automatically generated. Formation and Department can be added later.
         </p>
         <div class="staff-form-grid">
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Surname *</label>
-            <input id="swalStaffSurname" class="swal2-input" placeholder="Surname" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffSurname" class="swal2-input" placeholder="Surname" value="${(step1InitialData.surname || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Other Names</label>
-            <input id="swalStaffOtherNames" class="swal2-input" placeholder="Other Names" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffOtherNames" class="swal2-input" placeholder="Other Names" value="${(step1InitialData.otherNames || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Email (optional)</label>
-            <input id="swalStaffEmail" class="swal2-input" type="email" placeholder="Email" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffEmail" class="swal2-input" type="email" placeholder="Email" value="${(step1InitialData.email || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Telephone Number</label>
-            <input id="swalStaffTelephone" class="swal2-input" type="tel" placeholder="Telephone Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffTelephone" class="swal2-input" type="tel" placeholder="Telephone Number" value="${(step1InitialData.telephone || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Gender</label>
             <select id="swalStaffGender" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
               <option value="">-- Select Gender --</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Other">Other</option>
+              <option value="Male" ${(step1InitialData.gender === 'Male') ? 'selected' : ''}>Male</option>
+              <option value="Female" ${(step1InitialData.gender === 'Female') ? 'selected' : ''}>Female</option>
+              <option value="Other" ${(step1InitialData.gender === 'Other') ? 'selected' : ''}>Other</option>
             </select>
           </div>
-          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') && formations.length > 0 ? `
+          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (optional - can be added later)</label>
             <select id="swalStaffFormation" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
               <option value="">-- Select Formation (Optional) --</option>
-              ${formations.map(form => `<option value="${form.formationId}" ${currentFormationId && form.formationId === currentFormationId ? 'selected' : ''}>${form.name || form.formationId}</option>`).join('')}
+              ${formations && formations.length > 0 ? formations.map(form => `<option value="${(form.formationId || '').toString().replace(/"/g, '&quot;')}" ${(step1InitialData && step1InitialData.formationId === form.formationId) || (currentFormationId && form.formationId === currentFormationId) ? 'selected' : ''}>${String(form.name || form.formationId || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`).join('') : '<option value="">No formations available</option>'}
             </select>
           </div>
           ` : ''}
@@ -3195,100 +3192,100 @@ const AdminPage = (function () {
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Department/Sub-Unit (optional - can be added later)</label>
             <select id="swalStaffSubUnit" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
               <option value="">-- Select Department (Optional) --</option>
-              ${departments.map(dept => `<option value="${dept.departmentId || dept.subUnitId}" ${adminDepartmentId && dept.departmentId === adminDepartmentId ? 'selected' : ''}>${dept.name || dept.departmentId || dept.subUnitId}</option>`).join('')}
+              ${(departments && Array.isArray(departments) && departments.length > 0) ? departments.map(dept => `<option value="${(dept.departmentId || dept.subUnitId || '').toString().replace(/"/g, '&quot;')}" ${(step1InitialData && (step1InitialData.subUnitId === (dept.departmentId || dept.subUnitId))) || (adminDepartmentId && (dept.departmentId === adminDepartmentId || dept.subUnitId === adminDepartmentId)) ? 'selected' : ''}>${String(dept.name || dept.departmentId || dept.subUnitId || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`).join('') : '<option value="">No departments (select formation first)</option>'}
             </select>
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">File Number</label>
-            <input id="swalStaffFileNumber" class="swal2-input" placeholder="File Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffFileNumber" class="swal2-input" placeholder="File Number" value="${(step1InitialData.fileNumber || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">IPPIS Number</label>
-            <input id="swalStaffIppis" class="swal2-input" placeholder="IPPIS Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffIppis" class="swal2-input" placeholder="IPPIS Number" value="${(step1InitialData.ippisNumber || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Date of Birth</label>
-            <input id="swalStaffDob" class="swal2-input" type="date" placeholder="Date of Birth" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffDob" class="swal2-input" type="date" placeholder="Date of Birth" value="${step1InitialData.dob || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Date of First Appointment</label>
-            <input id="swalStaffFirstAppointment" class="swal2-input" type="date" placeholder="Date of First Appointment" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffFirstAppointment" class="swal2-input" type="date" placeholder="Date of First Appointment" value="${step1InitialData.firstAppointment || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Date of Present Appointment</label>
-            <input id="swalStaffPresentAppointment" class="swal2-input" type="date" placeholder="Date of Present Appointment" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPresentAppointment" class="swal2-input" type="date" placeholder="Date of Present Appointment" value="${step1InitialData.presentAppointment || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Confirmation Date</label>
-            <input id="swalStaffConfirmationDate" class="swal2-input" type="date" placeholder="Confirmation Date" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffConfirmationDate" class="swal2-input" type="date" placeholder="Confirmation Date" value="${step1InitialData.confirmationDate || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Cadre</label>
-            <input id="swalStaffCadre" class="swal2-input" placeholder="Cadre" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffCadre" class="swal2-input" placeholder="Cadre" value="${(step1InitialData.cadre || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Rank</label>
-            <input id="swalStaffRank" class="swal2-input" placeholder="Rank" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffRank" class="swal2-input" placeholder="Rank" value="${(step1InitialData.rank || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Grade Level</label>
-            <input id="swalStaffGradeLevel" class="swal2-input" placeholder="Grade Level" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffGradeLevel" class="swal2-input" placeholder="Grade Level" value="${(step1InitialData.gradeLevel || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State of Origin</label>
-            <input id="swalStaffStateOfOrigin" class="swal2-input" placeholder="State of Origin" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffStateOfOrigin" class="swal2-input" placeholder="State of Origin" value="${(step1InitialData.stateOfOrigin || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">LGA</label>
-            <input id="swalStaffLga" class="swal2-input" placeholder="Local Government Area" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffLga" class="swal2-input" placeholder="Local Government Area" value="${(step1InitialData.lga || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Qualification</label>
-            <input id="swalStaffQualification" class="swal2-input" placeholder="Educational Qualification" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffQualification" class="swal2-input" placeholder="Educational Qualification" value="${(step1InitialData.qualification || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary Institution Attended</label>
-            <input id="swalStaffTertiaryInstitution" class="swal2-input" placeholder="Tertiary Institution Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffTertiaryInstitution" class="swal2-input" placeholder="Tertiary Institution Name" value="${(step1InitialData.tertiaryInstitution || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: From (Year)</label>
-            <input id="swalStaffTertiaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffTertiaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" value="${step1InitialData.tertiaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Tertiary: To (Year)</label>
-            <input id="swalStaffTertiaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2014" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffTertiaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2014" value="${step1InitialData.tertiaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary School Attended</label>
-            <input id="swalStaffSecondarySchool" class="swal2-input" placeholder="Secondary School Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffSecondarySchool" class="swal2-input" placeholder="Secondary School Name" value="${(step1InitialData.secondarySchool || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: From (Year)</label>
-            <input id="swalStaffSecondaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffSecondaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" value="${step1InitialData.secondaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Secondary: To (Year)</label>
-            <input id="swalStaffSecondaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffSecondaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2010" value="${step1InitialData.secondaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary School Attended</label>
-            <input id="swalStaffPrimarySchool" class="swal2-input" placeholder="Primary School Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPrimarySchool" class="swal2-input" placeholder="Primary School Name" value="${(step1InitialData.primarySchool || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: From (Year)</label>
-            <input id="swalStaffPrimaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 1998" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPrimaryFromYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 1998" value="${step1InitialData.primaryFromYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Primary: To (Year)</label>
-            <input id="swalStaffPrimaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPrimaryToYear" class="swal2-input" type="number" min="1950" max="2100" placeholder="e.g. 2004" value="${step1InitialData.primaryToYear || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Pension Fund Administrator (PFA)</label>
-            <input id="swalStaffPfa" class="swal2-input" placeholder="PFA Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPfa" class="swal2-input" placeholder="PFA Name" value="${(step1InitialData.pfa || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">PFA PIN No</label>
-            <input id="swalStaffPfaPinNo" class="swal2-input" placeholder="PFA PIN Number" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <input id="swalStaffPfaPinNo" class="swal2-input" placeholder="PFA PIN Number" value="${(step1InitialData.pfaPinNo || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
           </div>
         </div>
       `,
@@ -3403,20 +3400,21 @@ const AdminPage = (function () {
       }
     });
 
-    // Validate step 1 (step1Data was set in preConfirm while modal was open)
-    if (!step1.isConfirmed || !step1Data.surname) {
+      // Validate step 1 (step1Data was set in preConfirm while modal was open)
       if (!step1.isConfirmed) return;
-      await UI.showError('Validation Error', 'Surname is required to proceed.');
-      return;
-    }
+      if (!step1Data.surname) {
+        await UI.showError('Validation Error', 'Surname is required to proceed.');
+        continue;
+      }
 
-    // Step 2: Personal Information (can be re-shown when user clicks "Back to Edit" from Preview)
-    const na = (v) => (v == null || v === undefined || String(v).trim() === '' ? '—' : String(v).trim());
-    let step2InitialData = {};
-    let step2Result;
+      // Step 2: Personal Information (Back returns to Step 1; only Step 1 Cancel closes the modal)
+      const na = (v) => (v == null || v === undefined || String(v).trim() === '' ? '—' : String(v).trim());
+      let step2InitialData = {};
+      let step2Result;
+      let createSuccess = false;
 
-    while (true) {
-      step2Result = await Swal.fire({
+      while (true) {
+        step2Result = await Swal.fire({
         title: 'Add Staff Record - Step 2 of 2',
         width: '800px',
         html: `
@@ -3512,14 +3510,14 @@ const AdminPage = (function () {
           }
           return { step2Data: { maritalStatus, spouseName, homeAddress, permanentHomeAddress: permanentAddress, spouseAddress, nextOfKin, nextOfKinAddress }, profilePictureData };
         }
-      });
+        });
 
-      if (!step2Result || !step2Result.isConfirmed || !step2Result.value) return;
+        if (!step2Result || !step2Result.isConfirmed || !step2Result.value) break;
 
-      const step2Data = step2Result.value.step2Data;
-      const profilePictureData = step2Result.value.profilePictureData;
+        const step2Data = step2Result.value.step2Data;
+        const profilePictureData = step2Result.value.profilePictureData;
 
-      // Preview: show all data before submission
+        // Preview: show all data before submission
       const formationLabel = formations.find(f => f.formationId === step1Data.formationId)?.name || step1Data.formationId || '—';
       const deptLabel = departments.find(d => (d.departmentId || d.subUnitId) === step1Data.subUnitId)?.name || step1Data.subUnitId || '—';
       const previewHtml = `
@@ -3669,6 +3667,7 @@ const AdminPage = (function () {
           }
           await loadHrmStaffStats();
           await loadStaffList(1);
+          createSuccess = true;
           break;
         } catch (err) {
           UI.closeLoading();
@@ -3677,6 +3676,9 @@ const AdminPage = (function () {
       } else {
         step2InitialData = step2Data;
       }
+      }
+      if (createSuccess) return;
+      step1InitialData = { ...step1Data };
     }
   }
 
@@ -3684,7 +3686,17 @@ const AdminPage = (function () {
    * Load staff list with pagination
    */
   async function loadStaffList(page = null) {
-    if (!adminKey) return;
+    var container = document.getElementById('hrmStaffTable');
+    if (!container) {
+      console.warn('loadStaffList: #hrmStaffTable not found in DOM');
+      return;
+    }
+
+    if (!adminKey) {
+      container.textContent = 'Session expired. Please log in again.';
+      console.warn('loadStaffList: no adminKey');
+      return;
+    }
 
     if (page !== null) {
       currentStaffPage = page;
@@ -3692,9 +3704,6 @@ const AdminPage = (function () {
 
     const query = document.getElementById('hrmStaffSearchInput')?.value.trim() || '';
     const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
-
-    const container = document.getElementById('hrmStaffTable');
-    if (!container) return;
 
     container.textContent = 'Loading staff records...';
 
@@ -3848,6 +3857,13 @@ const AdminPage = (function () {
 
   function loadStaffListPage(page) {
     loadStaffList(page);
+  }
+
+  // Expose to AdminPage immediately so Staff view can call it regardless of closure/scope
+  if (typeof window !== 'undefined') {
+    if (!window.AdminPage) window.AdminPage = {};
+    window.AdminPage.loadStaffList = loadStaffList;
+    window.AdminPage.loadStaffListPage = loadStaffListPage;
   }
 
   /**
@@ -4751,12 +4767,18 @@ const AdminPage = (function () {
 
       const staff = res.data.staff;
 
-      // Convert date to yyyy-mm-dd for type="date" inputs (accepts plain text like "25 Jan 2025" or ISO)
+      // Convert date to yyyy-mm-dd for type="date" inputs (accepts plain text like "25 Jan 2025" or ISO).
+      // Use local date components so timezone does not change the day after edit.
       function toDateInputValue(val) {
         if (!val) return '';
-        if (/^\d{4}-\d{2}-\d{2}/.test(String(val))) return String(val).slice(0, 10);
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
         const d = new Date(val);
-        return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+        if (isNaN(d.getTime())) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
       }
 
       // Load formations and departments for selection
@@ -4841,12 +4863,12 @@ const AdminPage = (function () {
                 <option value="Other" ${staff.gender === 'Other' ? 'selected' : ''}>Other</option>
               </select>
             </div>
-            ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') && formations.length > 0 ? `
+            ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (can be changed)</label>
               <select id="swalEditFormation" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
                 <option value="">-- No Formation --</option>
-                ${formations.map(form => `<option value="${form.formationId}" ${staff.formationId && form.formationId === staff.formationId ? 'selected' : ''}>${form.name || form.formationId}</option>`).join('')}
+                ${(formations && formations.length > 0) ? formations.map(form => `<option value="${(form.formationId || '').toString().replace(/"/g, '&quot;')}" ${staff.formationId && form.formationId === staff.formationId ? 'selected' : ''}>${String(form.name || form.formationId || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`).join('') : '<option value="">No formations available</option>'}
               </select>
             </div>
             ` : ''}
@@ -4854,7 +4876,7 @@ const AdminPage = (function () {
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Department/Sub-Unit (can be changed)</label>
               <select id="swalEditSubUnit" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
                 <option value="">-- No Department --</option>
-                ${departments.map(dept => `<option value="${dept.departmentId || dept.subUnitId}" ${staff.subUnitId && (dept.departmentId === staff.subUnitId || dept.subUnitId === staff.subUnitId) ? 'selected' : ''}>${dept.name || dept.departmentId || dept.subUnitId}</option>`).join('')}
+                ${(departments && Array.isArray(departments) && departments.length > 0) ? departments.map(dept => `<option value="${(dept.departmentId || dept.subUnitId || '').toString().replace(/"/g, '&quot;')}" ${staff.subUnitId && (dept.departmentId === staff.subUnitId || dept.subUnitId === staff.subUnitId) ? 'selected' : ''}>${String(dept.name || dept.departmentId || dept.subUnitId || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</option>`).join('') : '<option value="">No departments available</option>'}
               </select>
             </div>
             <div>
@@ -5278,6 +5300,40 @@ const AdminPage = (function () {
     }
   }
 
+  /**
+   * Restore an archived staff record (set status to ACTIVE). Uses updateStaff.
+   */
+  async function unarchiveStaff(employeeId) {
+    if (!adminKey) return;
+
+    const confirmed = await UI.confirmAction(
+      'Restore Staff Record',
+      'Restore this archived staff record to active status?',
+      'Restore',
+      'Cancel'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await Api.call('updateStaff', {
+        key: adminKey,
+        employeeId: employeeId,
+        staff: { status: 'ACTIVE' }
+      });
+
+      if (res && res.success) {
+        await UI.showSuccess('Success', 'Staff record restored successfully!');
+        await loadHrmStaffStats();
+        await loadStaffList(currentStaffPage);
+      } else {
+        throw new Error(res.message || 'Failed to restore staff record.');
+      }
+    } catch (err) {
+      await UI.showError('Error', err.message || 'Failed to restore staff record.');
+    }
+  }
+
   // Export functions (assign to window.AdminPage, not const AdminPage)
   if (!window.AdminPage) {
     window.AdminPage = {};
@@ -5288,6 +5344,7 @@ const AdminPage = (function () {
   window.AdminPage.showFullStaffProfile = showFullStaffProfile;
   window.AdminPage.editStaff = editStaff;
   window.AdminPage.archiveStaffConfirm = archiveStaffConfirm;
+  window.AdminPage.unarchiveStaff = unarchiveStaff;
   window.AdminPage.loadHrmStaffStats = loadHrmStaffStats;
   window.AdminPage.showAddStaffModal = showAddStaffModal;
 
@@ -6267,6 +6324,7 @@ const AdminPage = (function () {
       `;
       await loadHrmStaffStats();
     } else if (view === 'staff') {
+      // Staff Records view: same for SUPER_ADMIN and HRM_ADMIN (both can see table and actions)
       container.innerHTML = `
         <section class="card card-full-width">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
@@ -6297,7 +6355,7 @@ const AdminPage = (function () {
               <span>Include Archived</span>
             </label>
           </div>
-          <div id="hrmStaffTable" class="table-wrapper"></div>
+          <div id="hrmStaffTable" class="table-wrapper">Loading staff records...</div>
           <div id="hrmStaffPagination"></div>
         </section>
       `;
@@ -6324,34 +6382,40 @@ const AdminPage = (function () {
       const searchInput = document.getElementById('hrmStaffSearchInput');
       const includeArchivedCheck = document.getElementById('hrmIncludeArchivedCheck');
 
+      var loadStaffListFn = (window.AdminPage && typeof window.AdminPage.loadStaffList === 'function')
+        ? function (p) { return window.AdminPage.loadStaffList(p); }
+        : null;
       if (searchBtn) {
-        searchBtn.addEventListener('click', () => {
-          loadStaffList(1);
-        });
+        searchBtn.addEventListener('click', () => { if (loadStaffListFn) loadStaffListFn(1); });
       }
-
       if (clearBtn) {
         clearBtn.addEventListener('click', () => {
           if (searchInput) searchInput.value = '';
-          loadStaffList(1);
+          if (loadStaffListFn) loadStaffListFn(1);
         });
       }
-
       if (searchInput) {
         searchInput.addEventListener('keypress', (e) => {
-          if (e.key === 'Enter') {
-            loadStaffList(1);
-          }
+          if (e.key === 'Enter' && loadStaffListFn) loadStaffListFn(1);
         });
       }
-
       if (includeArchivedCheck) {
-        includeArchivedCheck.addEventListener('change', () => {
-          loadStaffList(1);
-        });
+        includeArchivedCheck.addEventListener('change', () => { if (loadStaffListFn) loadStaffListFn(1); });
       }
 
-      await loadStaffList(1);
+      try {
+        if (loadStaffListFn) {
+          await loadStaffListFn(1);
+        } else {
+          var tableEl = container.querySelector('#hrmStaffTable');
+          if (tableEl) tableEl.textContent = 'Unable to load staff list. Please refresh the page.';
+          console.error('loadStaffList is not available on AdminPage');
+        }
+      } catch (err) {
+        var tableEl = container.querySelector('#hrmStaffTable');
+        if (tableEl) tableEl.textContent = (err && err.message) ? err.message : 'Failed to load staff records.';
+        console.error('loadStaffList error:', err);
+      }
     } else if (view === 'profiles') {
       container.innerHTML = `
         <section class="card">
@@ -6624,6 +6688,7 @@ const AdminPage = (function () {
     viewStaffProfile,
     editStaff,
     archiveStaffConfirm,
+    unarchiveStaff,
     showAddStaffModal,
     loadAdminsTable,
     showAdminModal,
