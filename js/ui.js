@@ -3307,6 +3307,49 @@ const AdminPage = (function () {
         htmlContainer: 'swal2-html-container-wide',
         confirmButton: 'swal2-confirm'
       },
+      preConfirm: () => {
+        // Collect Step 1 data while modal is still open (DOM available)
+        const get = (id) => document.getElementById(id);
+        const v = (el) => (el && el.value != null ? String(el.value).trim() : '');
+        const surname = v(get('swalStaffSurname'));
+        if (!surname) {
+          Swal.showValidationMessage('Surname is required to proceed.');
+          return false;
+        }
+        step1Data = {
+          surname: surname,
+          otherNames: v(get('swalStaffOtherNames')),
+          email: v(get('swalStaffEmail')),
+          telephone: v(get('swalStaffTelephone')),
+          formationId: (get('swalStaffFormation') && get('swalStaffFormation').value) ? get('swalStaffFormation').value.trim() : (currentFormationId || adminFormationId || ''),
+          subUnitId: (get('swalStaffSubUnit') && get('swalStaffSubUnit').value) ? get('swalStaffSubUnit').value.trim() : (adminDepartmentId || ''),
+          fileNumber: v(get('swalStaffFileNumber')),
+          ippisNumber: v(get('swalStaffIppis')),
+          dob: v(get('swalStaffDob')),
+          firstAppointment: v(get('swalStaffFirstAppointment')),
+          presentAppointment: v(get('swalStaffPresentAppointment')),
+          confirmationDate: v(get('swalStaffConfirmationDate')),
+          cadre: v(get('swalStaffCadre')),
+          rank: v(get('swalStaffRank')),
+          gradeLevel: v(get('swalStaffGradeLevel')),
+          stateOfOrigin: v(get('swalStaffStateOfOrigin')),
+          lga: v(get('swalStaffLga')),
+          qualification: v(get('swalStaffQualification')),
+          gender: v(get('swalStaffGender')),
+          tertiaryInstitution: v(get('swalStaffTertiaryInstitution')),
+          tertiaryFromYear: v(get('swalStaffTertiaryFromYear')),
+          tertiaryToYear: v(get('swalStaffTertiaryToYear')),
+          secondarySchool: v(get('swalStaffSecondarySchool')),
+          secondaryFromYear: v(get('swalStaffSecondaryFromYear')),
+          secondaryToYear: v(get('swalStaffSecondaryToYear')),
+          primarySchool: v(get('swalStaffPrimarySchool')),
+          primaryFromYear: v(get('swalStaffPrimaryFromYear')),
+          primaryToYear: v(get('swalStaffPrimaryToYear')),
+          pfa: v(get('swalStaffPfa')),
+          pfaPinNo: v(get('swalStaffPfaPinNo'))
+        };
+        return true;
+      },
       didOpen: () => {
         // Ensure confirm button is visible
         setTimeout(() => {
@@ -3360,201 +3403,177 @@ const AdminPage = (function () {
       }
     });
 
-    // Validate step 1
-    if (!step1.isConfirmed) return;
-
-    // Collect step 1 data - use small delay to ensure DOM is ready
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    try {
-      // Try to get elements - they might still be in DOM briefly
-      let surnameEl = document.getElementById('swalStaffSurname');
-      let surname = '';
-      
-      // If element not found, try accessing through Swal container
-      if (!surnameEl && Swal && Swal.getContainer) {
-        const container = Swal.getContainer();
-        if (container) {
-          surnameEl = container.querySelector('#swalStaffSurname');
-        }
-      }
-      
-      surname = surnameEl ? surnameEl.value.trim() : '';
-      
-      if (!surname) {
-        await UI.showError('Validation Error', 'Surname is required to proceed.');
-        return;
-      }
-
-      const otherNamesEl = document.getElementById('swalStaffOtherNames');
-      const emailEl = document.getElementById('swalStaffEmail');
-      const telephoneEl = document.getElementById('swalStaffTelephone');
-      const formationEl = document.getElementById('swalStaffFormation');
-      const subUnitEl = document.getElementById('swalStaffSubUnit');
-      const fileNumberEl = document.getElementById('swalStaffFileNumber');
-      const ippisEl = document.getElementById('swalStaffIppis');
-      const dobEl = document.getElementById('swalStaffDob');
-      const firstAppointmentEl = document.getElementById('swalStaffFirstAppointment');
-      const presentAppointmentEl = document.getElementById('swalStaffPresentAppointment');
-      const confirmationDateEl = document.getElementById('swalStaffConfirmationDate');
-      const cadreEl = document.getElementById('swalStaffCadre');
-      const rankEl = document.getElementById('swalStaffRank');
-      const gradeLevelEl = document.getElementById('swalStaffGradeLevel');
-      const stateOfOriginEl = document.getElementById('swalStaffStateOfOrigin');
-      const lgaEl = document.getElementById('swalStaffLga');
-      const qualificationEl = document.getElementById('swalStaffQualification');
-      const genderEl = document.getElementById('swalStaffGender');
-      const tertiaryInstitutionEl = document.getElementById('swalStaffTertiaryInstitution');
-      const tertiaryFromYearEl = document.getElementById('swalStaffTertiaryFromYear');
-      const tertiaryToYearEl = document.getElementById('swalStaffTertiaryToYear');
-      const secondarySchoolEl = document.getElementById('swalStaffSecondarySchool');
-      const secondaryFromYearEl = document.getElementById('swalStaffSecondaryFromYear');
-      const secondaryToYearEl = document.getElementById('swalStaffSecondaryToYear');
-      const primarySchoolEl = document.getElementById('swalStaffPrimarySchool');
-      const primaryFromYearEl = document.getElementById('swalStaffPrimaryFromYear');
-      const primaryToYearEl = document.getElementById('swalStaffPrimaryToYear');
-      const pfaEl = document.getElementById('swalStaffPfa');
-      const pfaPinNoEl = document.getElementById('swalStaffPfaPinNo');
-
-      step1Data = {
-        surname: surname,
-        otherNames: otherNamesEl ? otherNamesEl.value.trim() : '',
-        email: emailEl ? emailEl.value.trim() : '',
-        telephone: telephoneEl ? telephoneEl.value.trim() : '',
-        formationId: formationEl ? (formationEl.value.trim() || currentFormationId || adminFormationId || '') : (currentFormationId || adminFormationId || ''),
-        subUnitId: subUnitEl ? (subUnitEl.value.trim() || adminDepartmentId || '') : (adminDepartmentId || ''),
-        fileNumber: fileNumberEl ? fileNumberEl.value.trim() : '',
-        ippisNumber: ippisEl ? ippisEl.value.trim() : '',
-        dob: dobEl ? dobEl.value.trim() : '',
-        firstAppointment: firstAppointmentEl ? firstAppointmentEl.value.trim() : '',
-        presentAppointment: presentAppointmentEl ? presentAppointmentEl.value.trim() : '',
-        confirmationDate: confirmationDateEl ? confirmationDateEl.value.trim() : '',
-        cadre: cadreEl ? cadreEl.value.trim() : '',
-        rank: rankEl ? rankEl.value.trim() : '',
-        gradeLevel: gradeLevelEl ? gradeLevelEl.value.trim() : '',
-        stateOfOrigin: stateOfOriginEl ? stateOfOriginEl.value.trim() : '',
-        lga: lgaEl ? lgaEl.value.trim() : '',
-        qualification: qualificationEl ? qualificationEl.value.trim() : '',
-        gender: genderEl ? genderEl.value.trim() : '',
-        tertiaryInstitution: tertiaryInstitutionEl ? tertiaryInstitutionEl.value.trim() : '',
-        tertiaryFromYear: tertiaryFromYearEl ? String(tertiaryFromYearEl.value).trim() : '',
-        tertiaryToYear: tertiaryToYearEl ? String(tertiaryToYearEl.value).trim() : '',
-        secondarySchool: secondarySchoolEl ? secondarySchoolEl.value.trim() : '',
-        secondaryFromYear: secondaryFromYearEl ? String(secondaryFromYearEl.value).trim() : '',
-        secondaryToYear: secondaryToYearEl ? String(secondaryToYearEl.value).trim() : '',
-        primarySchool: primarySchoolEl ? primarySchoolEl.value.trim() : '',
-        primaryFromYear: primaryFromYearEl ? String(primaryFromYearEl.value).trim() : '',
-        primaryToYear: primaryToYearEl ? String(primaryToYearEl.value).trim() : '',
-        pfa: pfaEl ? pfaEl.value.trim() : '',
-        pfaPinNo: pfaPinNoEl ? pfaPinNoEl.value.trim() : ''
-      };
-    } catch (err) {
-      console.error('Error collecting step 1 data:', err);
-      await UI.showError('Error', 'Failed to collect form data. Please try again.');
+    // Validate step 1 (step1Data was set in preConfirm while modal was open)
+    if (!step1.isConfirmed || !step1Data.surname) {
+      if (!step1.isConfirmed) return;
+      await UI.showError('Validation Error', 'Surname is required to proceed.');
       return;
     }
 
-    // Step 2: Personal Information
-    const step2 = await Swal.fire({
-      title: 'Add Staff Record - Step 2 of 2',
-      width: '800px',
-      html: `
-        <p style="text-align: left; color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
-          <strong>Personal Information:</strong> Fill in the following details (all fields are optional).
-        </p>
-        ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
-        <div style="grid-column: 1 / -1; margin-bottom: 1rem; padding: 1rem; border: 1px dashed #059669; border-radius: 8px; background: #f0fdf4;">
-          <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #059669;">Passport / Profile Picture (optional)</label>
-          <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">JPEG, PNG or WebP. Max 2MB. Stored in staff profile folder on Drive.</p>
-          <input type="file" id="swalStaffProfilePhoto" accept="image/jpeg,image/png,image/webp,image/jpg" style="width: 100%; padding: 0.5rem;">
-        </div>
-        ` : ''}
-        <div class="staff-form-grid">
-          <div>
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Marital Status</label>
-            <select id="swalStaffMaritalStatus" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
-              <option value="">-- Select Marital Status --</option>
-              <option value="Single">Single</option>
-              <option value="Married">Married</option>
-              <option value="Divorced">Divorced</option>
-              <option value="Widowed">Widowed</option>
-            </select>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Spouse Name</label>
-            <input id="swalStaffSpouseName" class="swal2-input" placeholder="Spouse Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
-          </div>
-          <div style="grid-column: 1 / -1;">
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Home Address</label>
-            <textarea id="swalStaffHomeAddress" class="swal2-textarea" placeholder="Home Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;"></textarea>
-          </div>
-          <div style="grid-column: 1 / -1;">
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Permanent Home Address</label>
-            <textarea id="swalStaffPermanentAddress" class="swal2-textarea" placeholder="Permanent Home Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;"></textarea>
-          </div>
-          <div style="grid-column: 1 / -1;">
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Spouse Address</label>
-            <textarea id="swalStaffSpouseAddress" class="swal2-textarea" placeholder="Spouse Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;"></textarea>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Next of Kin</label>
-            <input id="swalStaffNextOfKin" class="swal2-input" placeholder="Next of Kin Name" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
-          </div>
-          <div style="grid-column: 1 / -1;">
-            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Next of Kin Address</label>
-            <textarea id="swalStaffNextOfKinAddress" class="swal2-textarea" placeholder="Next of Kin Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;"></textarea>
-          </div>
-        </div>
-      `,
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: 'Create Staff Record',
-      cancelButtonText: 'Back',
-      confirmButtonColor: '#059669',
-      customClass: {
-        popup: 'swal2-wide-modal',
-        htmlContainer: 'swal2-html-container-wide'
-      },
-      preConfirm: async () => {
-        // Get values from step 2 (current modal)
-        const maritalStatus = document.getElementById('swalStaffMaritalStatus')?.value.trim() || '';
-        const spouseName = document.getElementById('swalStaffSpouseName')?.value.trim() || '';
-        const homeAddress = document.getElementById('swalStaffHomeAddress')?.value.trim() || '';
-        const permanentAddress = document.getElementById('swalStaffPermanentAddress')?.value.trim() || '';
-        const spouseAddress = document.getElementById('swalStaffSpouseAddress')?.value.trim() || '';
-        const nextOfKin = document.getElementById('swalStaffNextOfKin')?.value.trim() || '';
-        const nextOfKinAddress = document.getElementById('swalStaffNextOfKinAddress')?.value.trim() || '';
+    // Step 2: Personal Information (can be re-shown when user clicks "Back to Edit" from Preview)
+    const na = (v) => (v == null || v === undefined || String(v).trim() === '' ? '—' : String(v).trim());
+    let step2InitialData = {};
+    let step2Result;
 
-        // Optional profile picture (HRM Admin / Super Admin only)
-        let profilePictureData = null;
-        const photoInput = document.getElementById('swalStaffProfilePhoto');
-        if (photoInput && photoInput.files && photoInput.files[0]) {
-          const file = photoInput.files[0];
-          const maxSize = 2 * 1024 * 1024; // 2MB
-          if (file.size > maxSize) {
-            Swal.showValidationMessage('Profile picture must be 2MB or less.');
+    while (true) {
+      step2Result = await Swal.fire({
+        title: 'Add Staff Record - Step 2 of 2',
+        width: '800px',
+        html: `
+          <p style="text-align: left; color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+            <strong>Personal Information:</strong> Fill in the following details (all fields are optional).
+          </p>
+          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+          <div style="grid-column: 1 / -1; margin-bottom: 1rem; padding: 1rem; border: 1px dashed #059669; border-radius: 8px; background: #f0fdf4;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #059669;">Passport / Profile Picture (optional)</label>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">JPEG, PNG or WebP. Max 2MB. Stored in staff profile folder on Drive.</p>
+            <input type="file" id="swalStaffProfilePhoto" accept="image/jpeg,image/png,image/webp,image/jpg" style="width: 100%; padding: 0.5rem;">
+          </div>
+          ` : ''}
+          <div class="staff-form-grid">
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Marital Status</label>
+              <select id="swalStaffMaritalStatus" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">-- Select Marital Status --</option>
+                <option value="Single" ${(step2InitialData.maritalStatus === 'Single') ? 'selected' : ''}>Single</option>
+                <option value="Married" ${(step2InitialData.maritalStatus === 'Married') ? 'selected' : ''}>Married</option>
+                <option value="Divorced" ${(step2InitialData.maritalStatus === 'Divorced') ? 'selected' : ''}>Divorced</option>
+                <option value="Widowed" ${(step2InitialData.maritalStatus === 'Widowed') ? 'selected' : ''}>Widowed</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Spouse Name</label>
+              <input id="swalStaffSpouseName" class="swal2-input" placeholder="Spouse Name" value="${(step2InitialData.spouseName || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Home Address</label>
+              <textarea id="swalStaffHomeAddress" class="swal2-textarea" placeholder="Home Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${(step2InitialData.homeAddress || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Permanent Home Address</label>
+              <textarea id="swalStaffPermanentAddress" class="swal2-textarea" placeholder="Permanent Home Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${(step2InitialData.permanentHomeAddress || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Spouse Address</label>
+              <textarea id="swalStaffSpouseAddress" class="swal2-textarea" placeholder="Spouse Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${(step2InitialData.spouseAddress || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Next of Kin</label>
+              <input id="swalStaffNextOfKin" class="swal2-input" placeholder="Next of Kin Name" value="${(step2InitialData.nextOfKin || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            </div>
+            <div style="grid-column: 1 / -1;">
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Next of Kin Address</label>
+              <textarea id="swalStaffNextOfKinAddress" class="swal2-textarea" placeholder="Next of Kin Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${(step2InitialData.nextOfKinAddress || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+          </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Preview',
+        cancelButtonText: 'Back',
+        confirmButtonColor: '#059669',
+        customClass: {
+          popup: 'swal2-wide-modal',
+          htmlContainer: 'swal2-html-container-wide'
+        },
+        preConfirm: async () => {
+          const maritalStatus = document.getElementById('swalStaffMaritalStatus')?.value.trim() || '';
+          const spouseName = document.getElementById('swalStaffSpouseName')?.value.trim() || '';
+          const homeAddress = document.getElementById('swalStaffHomeAddress')?.value.trim() || '';
+          const permanentAddress = document.getElementById('swalStaffPermanentAddress')?.value.trim() || '';
+          const spouseAddress = document.getElementById('swalStaffSpouseAddress')?.value.trim() || '';
+          const nextOfKin = document.getElementById('swalStaffNextOfKin')?.value.trim() || '';
+          const nextOfKinAddress = document.getElementById('swalStaffNextOfKinAddress')?.value.trim() || '';
+
+          let profilePictureData = null;
+          const photoInput = document.getElementById('swalStaffProfilePhoto');
+          if (photoInput && photoInput.files && photoInput.files[0]) {
+            const file = photoInput.files[0];
+            if (file.size > 2 * 1024 * 1024) {
+              Swal.showValidationMessage('Profile picture must be 2MB or less.');
+              return false;
+            }
+            const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+            if (!allowed.includes(file.type)) {
+              Swal.showValidationMessage('Profile picture must be JPEG, PNG or WebP.');
+              return false;
+            }
+            profilePictureData = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve({ base64: reader.result, fileName: file.name, mimeType: file.type, fileSize: file.size });
+              reader.onerror = () => reject(new Error('Failed to read file'));
+              reader.readAsDataURL(file);
+            });
+          }
+
+          if (!step1Data.surname) {
+            Swal.showValidationMessage('Surname is required.');
             return false;
           }
-          const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-          if (!allowed.includes(file.type)) {
-            Swal.showValidationMessage('Profile picture must be JPEG, PNG or WebP.');
-            return false;
-          }
-          profilePictureData = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve({ base64: reader.result, fileName: file.name, mimeType: file.type, fileSize: file.size });
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsDataURL(file);
-          });
+          return { step2Data: { maritalStatus, spouseName, homeAddress, permanentHomeAddress: permanentAddress, spouseAddress, nextOfKin, nextOfKinAddress }, profilePictureData };
         }
+      });
 
-        // Use step 1 data (stored when step 1 closed)
-        const surname = step1Data.surname || '';
-        if (!surname) {
-          Swal.showValidationMessage('Surname is required.');
-          return false;
-        }
+      if (!step2Result || !step2Result.isConfirmed || !step2Result.value) return;
 
+      const step2Data = step2Result.value.step2Data;
+      const profilePictureData = step2Result.value.profilePictureData;
+
+      // Preview: show all data before submission
+      const formationLabel = formations.find(f => f.formationId === step1Data.formationId)?.name || step1Data.formationId || '—';
+      const deptLabel = departments.find(d => (d.departmentId || d.subUnitId) === step1Data.subUnitId)?.name || step1Data.subUnitId || '—';
+      const previewHtml = `
+        <div class="swal-mobile-stack" style="text-align: left; max-height: 60vh; overflow-y: auto;">
+          <h3 style="grid-column: 1 / -1; margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Basic Information</h3>
+          <div><strong>Surname:</strong> ${na(step1Data.surname)}</div>
+          <div><strong>Other Names:</strong> ${na(step1Data.otherNames)}</div>
+          <div><strong>Gender:</strong> ${na(step1Data.gender)}</div>
+          <div><strong>Email:</strong> ${na(step1Data.email)}</div>
+          <div><strong>Telephone:</strong> ${na(step1Data.telephone)}</div>
+          <div><strong>File Number:</strong> ${na(step1Data.fileNumber)}</div>
+          <div><strong>IPPIS Number:</strong> ${na(step1Data.ippisNumber)}</div>
+          <div><strong>Date of Birth:</strong> ${na(step1Data.dob)}</div>
+          <div><strong>Cadre:</strong> ${na(step1Data.cadre)}</div>
+          <div><strong>Rank:</strong> ${na(step1Data.rank)}</div>
+          <div><strong>Grade Level:</strong> ${na(step1Data.gradeLevel)}</div>
+          <div><strong>State of Origin:</strong> ${na(step1Data.stateOfOrigin)}</div>
+          <div><strong>LGA:</strong> ${na(step1Data.lga)}</div>
+          <div><strong>Qualification:</strong> ${na(step1Data.qualification)}</div>
+          <div style="grid-column: 1 / -1;"><strong>Tertiary Institution:</strong> ${na(step1Data.tertiaryInstitution)} ${(step1Data.tertiaryFromYear || step1Data.tertiaryToYear) ? '(' + na(step1Data.tertiaryFromYear) + ' – ' + na(step1Data.tertiaryToYear) + ')' : ''}</div>
+          <div style="grid-column: 1 / -1;"><strong>Secondary School:</strong> ${na(step1Data.secondarySchool)} ${(step1Data.secondaryFromYear || step1Data.secondaryToYear) ? '(' + na(step1Data.secondaryFromYear) + ' – ' + na(step1Data.secondaryToYear) + ')' : ''}</div>
+          <div style="grid-column: 1 / -1;"><strong>Primary School:</strong> ${na(step1Data.primarySchool)} ${(step1Data.primaryFromYear || step1Data.primaryToYear) ? '(' + na(step1Data.primaryFromYear) + ' – ' + na(step1Data.primaryToYear) + ')' : ''}</div>
+          <div><strong>Formation:</strong> ${na(formationLabel)}</div>
+          <div><strong>Department:</strong> ${na(deptLabel)}</div>
+          <h3 style="grid-column: 1 / -1; margin: 1rem 0 0.5rem 0; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Appointment Information</h3>
+          <div><strong>Date of First Appointment:</strong> ${na(step1Data.firstAppointment)}</div>
+          <div><strong>Date of Present Appointment:</strong> ${na(step1Data.presentAppointment)}</div>
+          <div><strong>Confirmation Date:</strong> ${na(step1Data.confirmationDate)}</div>
+          <div><strong>PFA:</strong> ${na(step1Data.pfa)}</div>
+          <div><strong>PFA PIN No:</strong> ${na(step1Data.pfaPinNo)}</div>
+          <h3 style="grid-column: 1 / -1; margin: 1rem 0 0.5rem 0; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Personal Information</h3>
+          <div><strong>Marital Status:</strong> ${na(step2Data.maritalStatus)}</div>
+          <div><strong>Spouse Name:</strong> ${na(step2Data.spouseName)}</div>
+          <div style="grid-column: 1 / -1;"><strong>Home Address:</strong> ${na(step2Data.homeAddress)}</div>
+          <div style="grid-column: 1 / -1;"><strong>Permanent Home Address:</strong> ${na(step2Data.permanentHomeAddress)}</div>
+          <div style="grid-column: 1 / -1;"><strong>Spouse Address:</strong> ${na(step2Data.spouseAddress)}</div>
+          <div><strong>Next of Kin:</strong> ${na(step2Data.nextOfKin)}</div>
+          <div style="grid-column: 1 / -1;"><strong>Next of Kin Address:</strong> ${na(step2Data.nextOfKinAddress)}</div>
+          ${profilePictureData ? '<div style="grid-column: 1 / -1;"><strong>Profile Picture:</strong> Yes (will be uploaded)</div>' : ''}
+        </div>
+      `;
+
+      const previewResult = await Swal.fire({
+        title: 'Preview – Confirm before creating',
+        html: previewHtml,
+        width: '800px',
+        showCancelButton: true,
+        confirmButtonText: 'Create Staff Record',
+        cancelButtonText: 'Back to Edit',
+        confirmButtonColor: '#059669',
+        customClass: { popup: 'swal2-wide-modal', htmlContainer: 'swal2-html-container-wide' }
+      });
+
+      if (previewResult.isConfirmed) {
         try {
           UI.showLoading('Creating', 'Creating staff record...');
           const res = await Api.call('createStaff', {
@@ -3566,7 +3585,7 @@ const AdminPage = (function () {
               telephone: step1Data.telephone || '',
               fileNumber: step1Data.fileNumber || '',
               ippisNumber: step1Data.ippisNumber || '',
-              surname: surname,
+              surname: step1Data.surname,
               otherNames: step1Data.otherNames || '',
               dob: step1Data.dob || '',
               dateOfFirstAppointment: step1Data.firstAppointment || '',
@@ -3590,13 +3609,13 @@ const AdminPage = (function () {
               primaryToYear: step1Data.primaryToYear || '',
               pfa: step1Data.pfa || '',
               pfaPinNo: step1Data.pfaPinNo || '',
-              maritalStatus: maritalStatus || '',
-              spouseName: spouseName || '',
-              homeAddress: homeAddress || '',
-              permanentHomeAddress: permanentAddress || '',
-              spouseAddress: spouseAddress || '',
-              nextOfKin: nextOfKin || '',
-              nextOfKinAddress: nextOfKinAddress || ''
+              maritalStatus: step2Data.maritalStatus || '',
+              spouseName: step2Data.spouseName || '',
+              homeAddress: step2Data.homeAddress || '',
+              permanentHomeAddress: step2Data.permanentHomeAddress || '',
+              spouseAddress: step2Data.spouseAddress || '',
+              nextOfKin: step2Data.nextOfKin || '',
+              nextOfKinAddress: step2Data.nextOfKinAddress || ''
             }
           });
           if (!res || !res.success) {
@@ -3621,66 +3640,43 @@ const AdminPage = (function () {
               });
             } catch (picErr) {
               console.warn('Profile picture upload failed:', picErr);
-              // Don't fail create; user can add photo later in edit
             }
           }
           UI.closeLoading();
-          return { success: true, employeeId, formationId };
+
+          await UI.showSuccess('Success', 'Staff record created successfully!');
+
+          if (formationId) {
+            const uploadResult = await Swal.fire({
+              title: 'Upload Documents?',
+              text: 'Would you like to upload documents/images for this staff member now?',
+              icon: 'question',
+              showCancelButton: true,
+              confirmButtonText: 'Yes, Upload Documents',
+              cancelButtonText: 'Skip for Now',
+              confirmButtonColor: '#059669'
+            });
+            if (uploadResult.isConfirmed) {
+              try {
+                const staffRes = await Api.call('getStaffById', { key: adminKey, employeeId });
+                const staffFormationId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.formationId || formationId : formationId;
+                const staffSubUnitId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.subUnitId || '' : '';
+                await uploadEmployeeDocument(employeeId, staffFormationId, staffSubUnitId);
+              } catch (err) {
+                await uploadEmployeeDocument(employeeId, formationId, '');
+              }
+            }
+          }
+          await loadHrmStaffStats();
+          await loadStaffList(1);
+          break;
         } catch (err) {
           UI.closeLoading();
-          Swal.showValidationMessage(err.message || 'Failed to create staff record.');
-          return false;
+          await UI.showError('Error', err.message || 'Failed to create staff record.');
         }
+      } else {
+        step2InitialData = step2Data;
       }
-    });
-
-    if (!step2 || !step2.isConfirmed || !step2.value || !step2.value.success) return;
-
-    const result = step2;
-    if (result.isConfirmed && result.value && result.value.success) {
-      const employeeId = result.value.employeeId;
-      const formationId = result.value.formationId || currentFormationId || adminFormationId || '';
-
-      await UI.showSuccess(
-        'Success',
-        `Staff record created successfully!`
-      );
-
-      // Ask if user wants to upload documents
-      if (formationId) {
-        const uploadResult = await Swal.fire({
-          title: 'Upload Documents?',
-          text: 'Would you like to upload documents/images for this staff member now?',
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: 'Yes, Upload Documents',
-          cancelButtonText: 'Skip for Now',
-          confirmButtonColor: '#059669'
-        });
-
-        if (uploadResult.isConfirmed) {
-          // Get staff record to get formationId and subUnitId
-          try {
-            const staffRes = await Api.call('getStaffById', {
-              key: adminKey,
-              employeeId: employeeId
-            });
-            const staffFormationId = (staffRes && staffRes.success && staffRes.data && staffRes.data.staff)
-              ? staffRes.data.staff.formationId || formationId || ''
-              : formationId || '';
-            const staffSubUnitId = (staffRes && staffRes.success && staffRes.data && staffRes.data.staff)
-              ? staffRes.data.staff.subUnitId || ''
-              : '';
-            await uploadEmployeeDocument(employeeId, staffFormationId, staffSubUnitId);
-          } catch (err) {
-            // Fallback to just employeeId and formationId
-            await uploadEmployeeDocument(employeeId, formationId, '');
-          }
-        }
-      }
-
-      await loadHrmStaffStats();
-      await loadStaffList(1);
     }
   }
 
