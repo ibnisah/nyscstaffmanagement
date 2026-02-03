@@ -3487,21 +3487,16 @@ const AdminPage = (function () {
           const photoInput = document.getElementById('swalStaffProfilePhoto');
           if (photoInput && photoInput.files && photoInput.files[0]) {
             const file = photoInput.files[0];
+            // Strict client-side validation BEFORE reading file (do not use FileReader if invalid)
             if (file.size > 2 * 1024 * 1024) {
               Swal.showValidationMessage('Profile picture must be 2MB or less.');
               return false;
             }
-            const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-            if (!allowed.includes(file.type)) {
-              Swal.showValidationMessage('Profile picture must be JPEG, PNG or WebP.');
+            if (!file.type || !file.type.startsWith('image/')) {
+              Swal.showValidationMessage('Only image files are allowed (e.g. JPEG, PNG, WebP).');
               return false;
             }
-            profilePictureData = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve({ base64: reader.result, fileName: file.name, mimeType: file.type, fileSize: file.size });
-              reader.onerror = () => reject(new Error('Failed to read file'));
-              reader.readAsDataURL(file);
-            });
+            profilePictureData = await resizeAndCompressProfilePhoto(file);
           }
 
           if (!step1Data.surname) {
@@ -4103,6 +4098,55 @@ const AdminPage = (function () {
       UI.closeLoading();
       await UI.showError('Error', err.message || 'Failed to load staff profile.');
     }
+  }
+
+  /**
+   * Resize and compress an image file for profile photo (canvas-based, no external libs).
+   * Max 400x400, aspect ratio preserved; output JPEG 0.8 quality as Blob then base64 data URL.
+   * @param {File} file - Image file (any image/*)
+   * @returns {Promise<{ base64: string, fileName: string, mimeType: string, fileSize: number }>}
+   */
+  async function resizeAndCompressProfilePhoto(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const max = 400;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > max || h > max) {
+          const r = Math.min(max / w, max / h);
+          w = Math.round(w * r);
+          h = Math.round(h * r);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Failed to create image blob'));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve({
+            base64: reader.result,
+            fileName: (file.name ? file.name.replace(/\.[^.]+$/, '') : 'profile') + '.jpg',
+            mimeType: 'image/jpeg',
+            fileSize: blob.size
+          });
+          reader.onerror = () => reject(new Error('Failed to read blob as base64'));
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.8);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
+      };
+      img.src = url;
+    });
   }
 
   /** Fallback when no profile photo or image fails. Data URI only (no external file). */
@@ -5165,18 +5209,19 @@ const AdminPage = (function () {
                   const photoInput = document.getElementById('swalEditProfilePhoto');
                   if (photoInput && photoInput.files && photoInput.files[0] && (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')) {
                     const file = photoInput.files[0];
-                    if (file.size <= 2 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
-                      try {
-                        const base64 = await new Promise((resolve, reject) => {
-                          const reader = new FileReader();
-                          reader.onload = () => resolve(reader.result);
-                          reader.onerror = () => reject(new Error('Failed to read file'));
-                          reader.readAsDataURL(file);
-                        });
-                        profilePhotoPayload = { base64, fileName: file.name, mimeType: file.type, fileSize: file.size };
-                      } catch (e) {
-                        console.warn('Failed to read profile photo file:', e);
-                      }
+                    // Strict client-side validation BEFORE reading file (do not use FileReader if invalid)
+                    if (file.size > 2 * 1024 * 1024) {
+                      await UI.showError('Invalid profile photo', 'File must be 2MB or smaller.');
+                      return;
+                    }
+                    if (!file.type || !file.type.startsWith('image/')) {
+                      await UI.showError('Invalid profile photo', 'Only image files are allowed (e.g. JPEG, PNG, WebP).');
+                      return;
+                    }
+                    try {
+                      profilePhotoPayload = await resizeAndCompressProfilePhoto(file);
+                    } catch (e) {
+                      console.warn('Failed to read profile photo file:', e);
                     }
                   }
 
@@ -5230,21 +5275,38 @@ const AdminPage = (function () {
 
                     if (updateRes && updateRes.success) {
                       if (profilePhotoPayload) {
-                        try {
-                          UI.showLoading('Uploading', 'Uploading profile picture...');
-                          await Api.call('uploadStaffProfilePicture', {
-                            key: adminKey,
-                            employeeId,
-                            formationId: formationId || staff.formationId || undefined,
-                            subUnitId: subUnitId || staff.subUnitId || undefined,
-                            fileData: profilePhotoPayload.base64,
-                            fileName: profilePhotoPayload.fileName,
-                            mimeType: profilePhotoPayload.mimeType,
-                            fileSize: profilePhotoPayload.fileSize
-                          });
-                        } catch (picErr) {
-                          console.warn('Profile picture upload failed:', picErr);
-                          await UI.showError('Profile photo', picErr.message || 'Profile picture could not be saved to the staff record.');
+                        let uploadSucceeded = false;
+                        while (profilePhotoPayload && !uploadSucceeded) {
+                          try {
+                            UI.showLoading('Uploading', 'Uploading profile picture...');
+                            await Api.call('uploadStaffProfilePicture', {
+                              key: adminKey,
+                              employeeId,
+                              formationId: formationId || staff.formationId || undefined,
+                              subUnitId: subUnitId || staff.subUnitId || undefined,
+                              fileData: profilePhotoPayload.base64,
+                              fileName: profilePhotoPayload.fileName,
+                              mimeType: profilePhotoPayload.mimeType,
+                              fileSize: profilePhotoPayload.fileSize
+                            });
+                            uploadSucceeded = true;
+                            profilePhotoPayload = null;
+                          } catch (picErr) {
+                            console.warn('Profile picture upload failed:', picErr);
+                            UI.closeLoading();
+                            const retry = await Swal.fire({
+                              title: 'Profile photo upload failed',
+                              text: (picErr.message || 'The staff record was saved but the profile picture could not be uploaded.') + ' You can retry without reopening the form.',
+                              icon: 'error',
+                              showCancelButton: true,
+                              confirmButtonText: 'Retry',
+                              cancelButtonText: 'Dismiss'
+                            });
+                            if (!retry.isConfirmed) {
+                              profilePhotoPayload = null;
+                              break;
+                            }
+                          }
                         }
                       }
                       UI.closeLoading();
