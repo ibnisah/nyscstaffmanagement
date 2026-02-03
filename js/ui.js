@@ -5160,6 +5160,26 @@ const AdminPage = (function () {
                   const nextOfKinAddress = nextOfKinAddressEl ? nextOfKinAddressEl.value.trim() : '';
                   const status = statusEl ? statusEl.value : 'ACTIVE';
 
+                  // Capture profile photo file and base64 BEFORE closing the modal (closing removes the file input from DOM)
+                  let profilePhotoPayload = null;
+                  const photoInput = document.getElementById('swalEditProfilePhoto');
+                  if (photoInput && photoInput.files && photoInput.files[0] && (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')) {
+                    const file = photoInput.files[0];
+                    if (file.size <= 2 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+                      try {
+                        const base64 = await new Promise((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result);
+                          reader.onerror = () => reject(new Error('Failed to read file'));
+                          reader.readAsDataURL(file);
+                        });
+                        profilePhotoPayload = { base64, fileName: file.name, mimeType: file.type, fileSize: file.size };
+                      } catch (e) {
+                        console.warn('Failed to read profile photo file:', e);
+                      }
+                    }
+                  }
+
                   try {
                     Swal.close();
                     UI.showLoading('Updating', 'Saving staff record...');
@@ -5209,32 +5229,22 @@ const AdminPage = (function () {
                     });
 
                     if (updateRes && updateRes.success) {
-                      // Optional: upload new profile picture if selected (HRM Admin / Super Admin)
-                      const photoInput = document.getElementById('swalEditProfilePhoto');
-                      if (photoInput && photoInput.files && photoInput.files[0] && (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')) {
-                        const file = photoInput.files[0];
-                        if (file.size <= 2 * 1024 * 1024 && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
-                          try {
-                            UI.showLoading('Uploading', 'Uploading profile picture...');
-                            const base64 = await new Promise((resolve, reject) => {
-                              const reader = new FileReader();
-                              reader.onload = () => resolve(reader.result);
-                              reader.onerror = () => reject(new Error('Failed to read file'));
-                              reader.readAsDataURL(file);
-                            });
-                            await Api.call('uploadStaffProfilePicture', {
-                              key: adminKey,
-                              employeeId,
-                              formationId: formationId || staff.formationId || undefined,
-                              subUnitId: subUnitId || staff.subUnitId || undefined,
-                              fileData: base64,
-                              fileName: file.name,
-                              mimeType: file.type,
-                              fileSize: file.size
-                            });
-                          } catch (picErr) {
-                            console.warn('Profile picture upload failed:', picErr);
-                          }
+                      if (profilePhotoPayload) {
+                        try {
+                          UI.showLoading('Uploading', 'Uploading profile picture...');
+                          await Api.call('uploadStaffProfilePicture', {
+                            key: adminKey,
+                            employeeId,
+                            formationId: formationId || staff.formationId || undefined,
+                            subUnitId: subUnitId || staff.subUnitId || undefined,
+                            fileData: profilePhotoPayload.base64,
+                            fileName: profilePhotoPayload.fileName,
+                            mimeType: profilePhotoPayload.mimeType,
+                            fileSize: profilePhotoPayload.fileSize
+                          });
+                        } catch (picErr) {
+                          console.warn('Profile picture upload failed:', picErr);
+                          await UI.showError('Profile photo', picErr.message || 'Profile picture could not be saved to the staff record.');
                         }
                       }
                       UI.closeLoading();
