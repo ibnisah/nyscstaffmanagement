@@ -2681,7 +2681,7 @@ const AdminPage = (function () {
         if (res && res.success) {
           Swal.close();
 
-          // Show success message with VIEW DOCUMENTS button
+          // Show success with "Add More Documents" to upload again (not View Documents)
           const uploadResult = await Swal.fire({
             title: 'Upload Successful!',
             html: `
@@ -2696,7 +2696,7 @@ const AdminPage = (function () {
               </div>
             `,
             showConfirmButton: true,
-            confirmButtonText: 'VIEW DOCUMENTS',
+            confirmButtonText: 'Add More Documents',
             confirmButtonColor: '#059669',
             showCancelButton: true,
             cancelButtonText: 'Close',
@@ -2704,9 +2704,8 @@ const AdminPage = (function () {
             width: '500px'
           });
 
-          // If user clicks VIEW DOCUMENTS, open the full staff profile
           if (uploadResult.isConfirmed) {
-            await showFullStaffProfile(employeeId);
+            await uploadEmployeeDocument(employeeId, formationId, subUnitId);
           }
         } else {
           throw new Error(res.message || 'Upload failed');
@@ -3229,11 +3228,17 @@ const AdminPage = (function () {
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Grade Level</label>
-            <input id="swalStaffGradeLevel" class="swal2-input" placeholder="Grade Level" value="${(step1InitialData.gradeLevel || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <select id="swalStaffGradeLevel" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <option value="">-- Select Grade Level --</option>
+              ${(window.NIGERIA_GRADE_LEVELS || []).map(g => `<option value="${g}" ${(step1InitialData.gradeLevel || '') === g ? 'selected' : ''}>Grade Level ${g}</option>`).join('')}
+            </select>
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State of Origin</label>
-            <input id="swalStaffStateOfOrigin" class="swal2-input" placeholder="State of Origin" value="${(step1InitialData.stateOfOrigin || '').replace(/"/g, '&quot;')}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+            <select id="swalStaffStateOfOrigin" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <option value="">-- Select State --</option>
+              ${(window.NIGERIA_STATES || []).map(st => `<option value="${(st || '').replace(/"/g, '&quot;')}" ${(step1InitialData.stateOfOrigin || '') === st ? 'selected' : ''}>${String(st || '').replace(/</g, '&lt;')}</option>`).join('')}
+            </select>
           </div>
           <div>
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">LGA</label>
@@ -3823,7 +3828,7 @@ const AdminPage = (function () {
           <td style="white-space: nowrap;">
             <button class="btn btn-xs btn-primary" onclick="AdminPage.showFullStaffProfile('${s.employeeId}')" title="View full profile">View</button>
             <button class="btn btn-xs btn-secondary" onclick="AdminPage.editStaff('${s.employeeId}')" title="Edit staff record">Edit</button>
-            ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger" onclick="AdminPage.archiveStaffConfirm('${s.employeeId}')" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success" onclick="AdminPage.unarchiveStaff('${s.employeeId}')" title="Restore archived record">Restore</button>`}
+            ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" onclick="AdminPage.archiveStaffConfirm('${s.employeeId}')" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success" onclick="AdminPage.unarchiveStaff('${s.employeeId}')" title="Restore archived record">Restore</button>`}
           </td>
         </tr>`;
       }
@@ -4409,8 +4414,8 @@ const AdminPage = (function () {
               <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                 ${(adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_VIEWER') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
                 ${canEdit ? `<button id="editStaffBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Edit Record</button>` : ''}
-                ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem;">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
+                ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
               </div>
             </div>
               </div>
@@ -4957,15 +4962,21 @@ const AdminPage = (function () {
             </div>
             <div>
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Grade Level</label>
-              <input id="swalEditGradeLevel" class="swal2-input" placeholder="Grade Level" value="${staff.gradeLevel || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <select id="swalEditGradeLevel" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">-- Select Grade Level --</option>
+                ${(window.NIGERIA_GRADE_LEVELS || []).map(g => `<option value="${g}" ${(staff.gradeLevel || '') === g ? 'selected' : ''}>Grade Level ${g}</option>`).join('')}
+              </select>
             </div>
             <div>
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State of Origin</label>
-              <input id="swalEditStateOfOrigin" class="swal2-input" placeholder="State of Origin" value="${staff.stateOfOrigin || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <select id="swalEditStateOfOrigin" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+                <option value="">-- Select State --</option>
+                ${(window.NIGERIA_STATES || []).map(st => `<option value="${(st || '').replace(/"/g, '&quot;')}" ${(staff.stateOfOrigin || '') === st ? 'selected' : ''}>${String(st || '').replace(/</g, '&lt;')}</option>`).join('')}
+              </select>
             </div>
             <div>
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">LGA</label>
-              <input id="swalEditLga" class="swal2-input" placeholder="LGA" value="${staff.lga || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
+              <input id="swalEditLga" class="swal2-input" placeholder="Local Government Area" value="${staff.lga || ''}" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
             </div>
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Qualification</label>
@@ -5055,9 +5066,11 @@ const AdminPage = (function () {
           htmlContainer: 'swal2-html-container-wide'
         },
         didOpen: () => {
+          var container = window.Swal && window.Swal.getHtmlContainer ? window.Swal.getHtmlContainer() : null;
+          var byId = function (id) { return (container && container.querySelector('#' + id)) || document.getElementById(id); };
           // Load departments when formation is selected
-          const formationSelect = document.getElementById('swalEditFormation');
-          const subUnitSelect = document.getElementById('swalEditSubUnit');
+          const formationSelect = byId('swalEditFormation');
+          const subUnitSelect = byId('swalEditSubUnit');
 
           if (formationSelect && subUnitSelect) {
             formationSelect.addEventListener('change', async function () {
@@ -5088,14 +5101,9 @@ const AdminPage = (function () {
               }
             });
           }
-        },
-        focusConfirm: false,
-        showCancelButton: true,
-        showConfirmButton: false, // We'll add custom button
-        cancelButtonText: 'Cancel',
-        didOpen: () => {
+
           // Profile photo: safe renderer (thumbnail URL only, onerror fallback)
-          const editProfileImg = document.getElementById('swalEditProfilePhotoImg');
+          const editProfileImg = byId('swalEditProfilePhotoImg');
           if (editProfileImg) {
             renderProfilePhoto(editProfileImg, staff.profilePhotoFileId || null, 'w80');
           }
@@ -5333,7 +5341,11 @@ const AdminPage = (function () {
               }
             }
           }, 100);
-        }
+        },
+        focusConfirm: false,
+        showCancelButton: true,
+        showConfirmButton: false,
+        cancelButtonText: 'Cancel'
       });
     } catch (err) {
       UI.closeLoading();

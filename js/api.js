@@ -10,8 +10,8 @@ const Api = (function () {
   // For testing, you can temporarily use a placeholder, but it won't work until you deploy:
   // const BASE_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
 
-  // Request timeout in milliseconds (30 seconds)
-  const REQUEST_TIMEOUT = 30000;
+  // Request timeout in milliseconds (60 seconds - avoid timeout on slow Apps Script backend)
+  const REQUEST_TIMEOUT = 60000;
 
   // Simple cache for GET-like operations (formations, departments, etc.)
   const cache = new Map();
