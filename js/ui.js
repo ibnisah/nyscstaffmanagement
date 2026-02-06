@@ -404,6 +404,16 @@ const AdminPage = (function () {
 
   let currentModule = null;
 
+  // Helper function to check if a role is any HRM admin role
+  function isHrmAdminRole(role) {
+    return role === 'HRM_ADMIN' || role === 'HRM_ADMIN_1' || role === 'HRM_ADMIN_2' || role === 'HRM_ADMIN_3' || role === 'HRM_VIEWER';
+  }
+
+  // Helper function to check if a role can perform HRM admin actions (excludes HRM_VIEWER)
+  function isHrmAdminActionRole(role) {
+    return role === 'HRM_ADMIN' || role === 'HRM_ADMIN_1' || role === 'HRM_ADMIN_2' || role === 'HRM_ADMIN_3';
+  }
+
   async function init() {
     document
       .getElementById('adminAuthForm')
@@ -666,8 +676,8 @@ const AdminPage = (function () {
         loginSection.classList.add('hidden');
       }
 
-      // For HRM_ADMIN and HRM_VIEWER, directly open HRM module without showing module selector
-      if (adminRole === 'HRM_ADMIN' || adminRole === 'HRM_VIEWER') {
+      // For HRM_ADMIN roles and HRM_VIEWER, directly open HRM module without showing module selector
+      if (isHrmAdminRole(adminRole)) {
         // Hide module selector immediately
         const moduleSelector = document.getElementById('moduleSelector');
         if (moduleSelector) {
@@ -705,10 +715,10 @@ const AdminPage = (function () {
       // Show success message
       await UI.showSuccess('Login Successful', `Welcome! You are logged in as ${adminRole}.`, 2000);
 
-      // Show HRM Staff Dashboard only for HRM_ADMIN and SUPER_ADMIN
+      // Show HRM Staff Dashboard only for HRM admins and SUPER_ADMIN
       const hrmStaffDashboard = document.getElementById('hrmStaffDashboardSection');
       if (hrmStaffDashboard) {
-        if (adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN') {
+        if (isHrmAdminRole(adminRole) || adminRole === 'SUPER_ADMIN') {
           hrmStaffDashboard.classList.remove('hidden');
           await loadHrmStaffStats();
         } else {
@@ -1114,7 +1124,7 @@ const AdminPage = (function () {
           } else {
             console.warn('No modules returned from getAvailableModules');
             // Fallback: show basic modules based on role
-            if (adminRole === 'HRM_ADMIN' || adminRole === 'HRM_VIEWER') {
+            if (isHrmAdminRole(adminRole)) {
               modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
             } else {
               modules = [
@@ -1126,7 +1136,7 @@ const AdminPage = (function () {
         } catch (apiError) {
           console.error('Error fetching available modules:', apiError);
           // Fallback: show basic modules based on role
-          if (adminRole === 'HRM_ADMIN' || adminRole === 'HRM_VIEWER') {
+          if (isHrmAdminRole(adminRole)) {
             modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
           } else {
             modules = [
@@ -1242,7 +1252,7 @@ const AdminPage = (function () {
       if (retentionSection) retentionSection.classList.remove('hidden');
       // Show Add Employee button for SUPER_ADMIN
       if (addEmployeeBtn) addEmployeeBtn.classList.remove('hidden');
-    } else if (adminRole === 'HRM_ADMIN' || adminRole === 'FORMATION_ADMIN') {
+    } else if (isHrmAdminActionRole(adminRole) || adminRole === 'FORMATION_ADMIN') {
       // Show Add Employee button for HRM_ADMIN and FORMATION_ADMIN
       if (addEmployeeBtn) addEmployeeBtn.classList.remove('hidden');
       if (superAdminSection) superAdminSection.classList.add('hidden');
@@ -1736,90 +1746,302 @@ const AdminPage = (function () {
 
     const isEdit = admin !== null;
 
-    const result = await Swal.fire({
-      title: isEdit ? 'Edit Admin' : 'Assign Admin',
-      html: `
-        <input id="swalAdminKey" class="swal2-input" placeholder="Admin Key *" ${isEdit ? 'readonly' : ''} value="${isEdit ? (admin.adminKey || '') : ''}">
-        <input id="swalAdminName" class="swal2-input" placeholder="Name (optional)" value="${isEdit ? (admin.name || '') : ''}">
-        <select id="swalAdminRole" class="swal2-select">
-          <option value="">Select Role *</option>
-              <option value="FORMATION_ADMIN"${isEdit && admin.role === 'FORMATION_ADMIN' ? ' selected' : ''}>Formation Admin</option>
-              <option value="DEPARTMENT_ADMIN"${isEdit && admin.role === 'DEPARTMENT_ADMIN' ? ' selected' : ''}>Department Admin</option>
-              <option value="EMPLOYEE"${isEdit && admin.role === 'EMPLOYEE' ? ' selected' : ''}>Employee</option>
-              ${adminRole === 'SUPER_ADMIN' ? `
-              <option value="HRM_ADMIN"${isEdit && admin.role === 'HRM_ADMIN' ? ' selected' : ''}>HRM Admin</option>
-              <option value="HRM_VIEWER"${isEdit && admin.role === 'HRM_VIEWER' ? ' selected' : ''}>HRM Viewer</option>
-              ` : ''}
-        </select>
-        <input id="swalAdminFormationId" class="swal2-input" placeholder="Formation ID *" value="${isEdit ? (admin.formationId || '') : ''}">
-        <input id="swalAdminDepartmentId" class="swal2-input" placeholder="Department ID (for Dept Admin)" value="${isEdit ? (admin.departmentId || '') : ''}">
-      `,
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: isEdit ? 'Update' : 'Create',
-      cancelButtonText: 'Cancel',
-      confirmButtonColor: '#059669',
-      preConfirm: async () => {
-        const keyVal = document.getElementById('swalAdminKey').value.trim();
-        const nameVal = document.getElementById('swalAdminName').value.trim();
-        const roleVal = document.getElementById('swalAdminRole').value;
-        const formationVal = document.getElementById('swalAdminFormationId').value.trim();
-        const deptVal = document.getElementById('swalAdminDepartmentId').value.trim();
+    // Load formations for dropdowns (create: module-based; edit: all roles)
+    let formations = [];
+    try {
+      const formRes = await Api.call('listFormations', { key: adminKey });
+      if (formRes && formRes.success && formRes.data && formRes.data.formations) {
+        formations = (formRes.data.formations || []).filter(f => f.active !== false);
+      }
+    } catch (err) {
+      console.warn('Could not load formations:', err);
+    }
 
-        if (!keyVal || !roleVal) {
-          Swal.showValidationMessage('Admin Key and Role are required.');
-          return false;
-        }
+    const formationOptions = formations.map(f =>
+      `<option value="${f.formationId || ''}" ${isEdit && (admin.formationId || '') === (f.formationId || '') ? ' selected' : ''}>${f.name || f.formationId || ''}</option>`
+    ).join('');
 
-        if (roleVal === 'DEPARTMENT_ADMIN' && (!formationVal || !deptVal)) {
-          Swal.showValidationMessage('Formation ID and Department ID are required for Department Admin.');
-          return false;
-        }
-
-        if ((roleVal === 'FORMATION_ADMIN' || roleVal === 'EMPLOYEE') && !formationVal) {
-          Swal.showValidationMessage('Formation ID is required for ' + roleVal + '.');
-          return false;
-        }
-
-        try {
-          UI.showLoading('Saving', isEdit ? 'Updating admin...' : 'Creating admin...');
-          if (isEdit) {
-            const payload = {
+    if (isEdit) {
+      // Edit: same layout as before with all roles + module-based roles
+      const result = await Swal.fire({
+        title: 'Edit Admin',
+        html: `
+          <input id="swalAdminKey" class="swal2-input" placeholder="Admin Key *" readonly value="${(admin.adminKey || '').replace(/"/g, '&quot;')}">
+          <input id="swalAdminName" class="swal2-input" placeholder="Name *" value="${(admin.name || '').replace(/"/g, '&quot;')}">
+          <select id="swalAdminRole" class="swal2-select" style="width: 100%;">
+            <option value="">Select Role *</option>
+            <option value="FORMATION_ADMIN"${admin.role === 'FORMATION_ADMIN' ? ' selected' : ''}>Formation Admin</option>
+            <option value="DEPARTMENT_ADMIN"${admin.role === 'DEPARTMENT_ADMIN' ? ' selected' : ''}>Department Admin</option>
+            <option value="EMPLOYEE"${admin.role === 'EMPLOYEE' ? ' selected' : ''}>Employee</option>
+            <option value="ATTENDANCE_ADMIN"${admin.role === 'ATTENDANCE_ADMIN' ? ' selected' : ''}>Attendance Admin (module-scoped)</option>
+            <option value="VISITORS_ADMIN"${admin.role === 'VISITORS_ADMIN' ? ' selected' : ''}>Visitors Admin (module-scoped)</option>
+            <option value="HRM_ADMIN_1"${admin.role === 'HRM_ADMIN_1' ? ' selected' : ''}>HRM Admin Level 1</option>
+            <option value="HRM_ADMIN_2"${admin.role === 'HRM_ADMIN_2' ? ' selected' : ''}>HRM Admin Level 2</option>
+            <option value="HRM_ADMIN_3"${admin.role === 'HRM_ADMIN_3' ? ' selected' : ''}>HRM Admin Level 3</option>
+            <option value="HRM_VIEWER"${admin.role === 'HRM_VIEWER' ? ' selected' : ''}>HRM Viewer</option>
+          </select>
+          <label class="swal2-label" style="text-align:left;display:block;margin-top:8px;">Formation</label>
+          <select id="swalAdminFormationId" class="swal2-select" style="width: 100%;">
+            <option value="">Select Formation</option>
+            ${formationOptions}
+          </select>
+          <label class="swal2-label" style="text-align:left;display:block;margin-top:8px;">Department</label>
+          <select id="swalAdminDepartmentId" class="swal2-select" style="width: 100%;">
+            <option value="">Select Department (if applicable)</option>
+          </select>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Update',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#059669',
+        didOpen: async () => {
+          const formationEl = document.getElementById('swalAdminFormationId');
+          const deptEl = document.getElementById('swalAdminDepartmentId');
+          if (formationEl && deptEl && admin.formationId) {
+            try {
+              const deptRes = await Api.call('listDepartments', { key: adminKey, formationId: admin.formationId });
+              if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
+                deptRes.data.departments.forEach(d => {
+                  const opt = document.createElement('option');
+                  opt.value = d.departmentId || '';
+                  opt.textContent = d.name || d.departmentId || '';
+                  if ((admin.departmentId || '') === (d.departmentId || '')) opt.selected = true;
+                  deptEl.appendChild(opt);
+                });
+              }
+            } catch (e) { console.warn(e); }
+          }
+          formationEl && formationEl.addEventListener('change', async function () {
+            const fid = this.value;
+            deptEl.innerHTML = '<option value="">Select Department</option>';
+            if (!fid) return;
+            try {
+              const deptRes = await Api.call('listDepartments', { key: adminKey, formationId: fid });
+              if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
+                deptRes.data.departments.forEach(d => {
+                  const opt = document.createElement('option');
+                  opt.value = d.departmentId || '';
+                  opt.textContent = d.name || d.departmentId || '';
+                  deptEl.appendChild(opt);
+                });
+              }
+            } catch (e) { console.warn(e); }
+          });
+        },
+        preConfirm: async () => {
+          const keyVal = document.getElementById('swalAdminKey').value.trim();
+          const nameVal = document.getElementById('swalAdminName').value.trim();
+          const roleVal = document.getElementById('swalAdminRole').value;
+          const formationVal = document.getElementById('swalAdminFormationId').value.trim();
+          const deptVal = document.getElementById('swalAdminDepartmentId').value.trim();
+          if (!keyVal || !roleVal) {
+            Swal.showValidationMessage('Admin Key and Role are required.');
+            return false;
+          }
+          if (roleVal === 'DEPARTMENT_ADMIN' || roleVal === 'ATTENDANCE_ADMIN' || roleVal === 'VISITORS_ADMIN') {
+            if (!formationVal || !deptVal) {
+              Swal.showValidationMessage('Formation and Department are required for this role.');
+              return false;
+            }
+          }
+          if ((roleVal === 'FORMATION_ADMIN' || roleVal === 'EMPLOYEE') && !formationVal) {
+            Swal.showValidationMessage('Formation is required for ' + roleVal + '.');
+            return false;
+          }
+          if (roleVal.startsWith('HRM_') && !formationVal) {
+            Swal.showValidationMessage('Formation is required for HRM roles.');
+            return false;
+          }
+          try {
+            UI.showLoading('Saving', 'Updating admin...');
+            await Api.call('updateAdminRole', {
               key: adminKey,
               targetKey: keyVal,
               role: roleVal,
               formationId: formationVal,
               departmentId: deptVal || undefined,
               name: nameVal || undefined,
-            };
-            await Api.call('updateAdminRole', payload);
-          } else {
-            const payload = {
-              key: adminKey,
-              newKey: keyVal,
-              role: roleVal,
-              formationId: formationVal,
-              departmentId: deptVal || undefined,
-              name: nameVal || undefined,
-            };
-            await Api.call('createAdmin', payload);
+            });
+            UI.closeLoading();
+            return true;
+          } catch (err) {
+            UI.closeLoading();
+            Swal.showValidationMessage(err.message || 'Failed to update admin.');
+            return false;
           }
-          UI.closeLoading();
-          return true;
-        } catch (err) {
-          UI.closeLoading();
-          Swal.showValidationMessage(err.message || `Failed to ${isEdit ? 'update' : 'create'} admin.`);
+        },
+      });
+      if (result.isConfirmed) {
+        await loadAdminsTable();
+        await UI.showSuccess('Success', 'Admin updated successfully.');
+      }
+      return;
+    }
+
+    // Create: module-based flow (SUPER_ADMIN only)
+    const result = await Swal.fire({
+      title: 'Create Admin (Module-based)',
+      html: `
+        <p class="swal2-html" style="text-align:left;color:#555;font-size:0.9rem;margin-bottom:12px;">Select the <strong>module</strong> this admin will manage. Attendance and Visitors are scoped by formation and department.</p>
+        <label class="swal2-label" style="text-align:left;display:block;">Module *</label>
+        <select id="swalAdminModule" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+          <option value="">Select Module *</option>
+          <option value="ATTENDANCE">Attendance (formation + department scoped)</option>
+          <option value="VISITORS">Visitors (formation + department scoped)</option>
+          <option value="HRM">HRM (department-specific, nationwide)</option>
+        </select>
+        <div id="swalAdminScopeAttendanceVisitors" style="display:none;">
+          <label class="swal2-label" style="text-align:left;display:block;">Formation *</label>
+          <select id="swalAdminFormationId" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+            <option value="">Select Formation *</option>
+            ${formationOptions}
+          </select>
+          <label class="swal2-label" style="text-align:left;display:block;">Department *</label>
+          <select id="swalAdminDepartmentId" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+            <option value="">Select Formation first</option>
+          </select>
+        </div>
+        <div id="swalAdminScopeHRM" style="display:none;">
+          <label class="swal2-label" style="text-align:left;display:block;">Formation *</label>
+          <select id="swalAdminFormationHrm" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+            <option value="">Select Formation *</option>
+            ${formationOptions}
+          </select>
+          <label class="swal2-label" style="text-align:left;display:block;">HRM Role *</label>
+          <select id="swalAdminRoleHrm" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+            <option value="">Select Role *</option>
+            <option value="HRM_ADMIN_1">HRM Admin Level 1</option>
+            <option value="HRM_ADMIN_2">HRM Admin Level 2</option>
+            <option value="HRM_ADMIN_3">HRM Admin Level 3</option>
+            <option value="HRM_VIEWER">HRM Viewer</option>
+          </select>
+        </div>
+        <label class="swal2-label" style="text-align:left;display:block;">Admin Key (for login) *</label>
+        <input id="swalAdminKey" class="swal2-input" placeholder="Admin Key *">
+        <label class="swal2-label" style="text-align:left;display:block;">Name *</label>
+        <input id="swalAdminName" class="swal2-input" placeholder="Name *">
+        <div id="swalAdminEmailWrap" style="display:none;">
+          <label class="swal2-label" style="text-align:left;display:block;">Email (optional)</label>
+          <input id="swalAdminEmail" class="swal2-input" type="email" placeholder="Email (optional)">
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Create Admin',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#059669',
+      didOpen: () => {
+        const moduleEl = document.getElementById('swalAdminModule');
+        const scopeAV = document.getElementById('swalAdminScopeAttendanceVisitors');
+        const scopeHRM = document.getElementById('swalAdminScopeHRM');
+        const emailWrap = document.getElementById('swalAdminEmailWrap');
+        const formationEl = document.getElementById('swalAdminFormationId');
+        const deptEl = document.getElementById('swalAdminDepartmentId');
+
+        function toggleScope() {
+          const v = (moduleEl && moduleEl.value) || '';
+          if (scopeAV) scopeAV.style.display = (v === 'ATTENDANCE' || v === 'VISITORS') ? 'block' : 'none';
+          if (scopeHRM) scopeHRM.style.display = v === 'HRM' ? 'block' : 'none';
+          if (emailWrap) emailWrap.style.display = v === 'HRM' ? 'block' : 'none';
+        }
+        moduleEl && moduleEl.addEventListener('change', toggleScope);
+
+        if (formationEl && deptEl) {
+          formationEl.addEventListener('change', async function () {
+            const fid = this.value;
+            deptEl.innerHTML = '<option value="">Select Department *</option>';
+            if (!fid) return;
+            try {
+              const deptRes = await Api.call('listDepartments', { key: adminKey, formationId: fid });
+              if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
+                deptRes.data.departments.forEach(d => {
+                  const opt = document.createElement('option');
+                  opt.value = d.departmentId || '';
+                  opt.textContent = d.name || d.departmentId || '';
+                  deptEl.appendChild(opt);
+                });
+              }
+            } catch (e) { console.warn(e); }
+          });
+        }
+      },
+      preConfirm: async () => {
+        const moduleVal = document.getElementById('swalAdminModule').value;
+        const keyVal = document.getElementById('swalAdminKey').value.trim();
+        const nameVal = document.getElementById('swalAdminName').value.trim();
+
+        if (!moduleVal) {
+          Swal.showValidationMessage('Please select a Module.');
           return false;
         }
+        if (!keyVal || !nameVal) {
+          Swal.showValidationMessage('Admin Key and Name are required.');
+          return false;
+        }
+
+        if (moduleVal === 'ATTENDANCE' || moduleVal === 'VISITORS') {
+          const formationVal = document.getElementById('swalAdminFormationId').value.trim();
+          const deptVal = document.getElementById('swalAdminDepartmentId').value.trim();
+          if (!formationVal || !deptVal) {
+            Swal.showValidationMessage('Formation and Department are required for ' + moduleVal + ' admin.');
+            return false;
+          }
+          try {
+            UI.showLoading('Saving', 'Creating admin...');
+            const role = moduleVal === 'ATTENDANCE' ? 'ATTENDANCE_ADMIN' : 'VISITORS_ADMIN';
+            await Api.call('createAdmin', {
+              key: adminKey,
+              newKey: keyVal,
+              role: role,
+              formationId: formationVal,
+              departmentId: deptVal,
+              name: nameVal,
+            });
+            UI.closeLoading();
+            return true;
+          } catch (err) {
+            UI.closeLoading();
+            Swal.showValidationMessage(err.message || 'Failed to create admin.');
+            return false;
+          }
+        }
+
+        if (moduleVal === 'HRM') {
+          const formationId = document.getElementById('swalAdminFormationHrm').value.trim();
+          const role = document.getElementById('swalAdminRoleHrm').value;
+          const email = document.getElementById('swalAdminEmail') ? document.getElementById('swalAdminEmail').value.trim() : '';
+          if (!formationId || !role) {
+            Swal.showValidationMessage('Formation and HRM Role are required.');
+            return false;
+          }
+          try {
+            UI.showLoading('Saving', 'Creating HRM admin...');
+            await Api.call('createHrmAdmin', {
+              key: adminKey,
+              adminId: keyVal,
+              name: nameVal,
+              email: email,
+              formationId: formationId,
+              role: role,
+            });
+            UI.closeLoading();
+            return true;
+          } catch (err) {
+            UI.closeLoading();
+            Swal.showValidationMessage(err.message || 'Failed to create HRM admin.');
+            return false;
+          }
+        }
+
+        Swal.showValidationMessage('Invalid module.');
+        return false;
       },
     });
 
     if (result.isConfirmed) {
       await loadAdminsTable();
-      await UI.showSuccess(
-        'Success',
-        `Admin ${isEdit ? 'updated' : 'created'} successfully.`
-      );
+      await UI.showSuccess('Success', 'Admin created successfully.');
     }
   }
 
@@ -2557,8 +2779,8 @@ const AdminPage = (function () {
   async function uploadEmployeeDocument(employeeId, formationId, subUnitId) {
     if (!adminKey || !employeeId) return;
 
-    // Check permissions - only HRM_ADMIN and SUPER_ADMIN can upload
-    if (adminRole !== 'HRM_ADMIN' && adminRole !== 'SUPER_ADMIN') {
+    // Check permissions - only HRM admins and SUPER_ADMIN can upload
+    if (!isHrmAdminActionRole(adminRole) && adminRole !== 'SUPER_ADMIN') {
       await UI.showError('Access Denied', 'Only HRM_ADMIN and SUPER_ADMIN can upload documents.');
       return;
     }
@@ -3034,7 +3256,151 @@ const AdminPage = (function () {
   // ============================================================================
 
   let currentStaffPage = 1;
-  let currentStaffLimit = 20;
+  let currentStaffLimit = 20; // Fixed at 20 per page as per requirements
+
+  /**
+   * Load HRM notifications (requests for approval or own request statuses)
+   */
+  async function loadHrmNotifications() {
+    const container = document.getElementById('hrmNotificationsList');
+    if (!container || !adminKey) return;
+
+    try {
+      // Approvers (SUPER_ADMIN, HRM_ADMIN_1) see pending requests; HRM_ADMIN_2/3 see their own (granted/denied status)
+      const isApprover = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1';
+      const scope = isApprover ? 'PENDING_FOR_ME' : 'MY';
+
+      const res = await Api.call('listHrmRequests', {
+        key: adminKey,
+        scope: scope
+      });
+
+      if (!res || !res.success || !res.data) {
+        container.innerHTML = '<p style="color: #666;">No notifications.</p>';
+        return;
+      }
+
+      const requests = res.data.requests || [];
+      if (requests.length === 0) {
+        container.innerHTML = '<p style="color: #666;">No notifications.</p>';
+        return;
+      }
+
+      let html = '<div style="max-height: 400px; overflow-y: auto;">';
+      
+      for (const req of requests) {
+        const statusBadge = req.status === 'PENDING' ? 'badge-warning' :
+          req.status === 'APPROVED' || req.status === 'EXECUTED' ? 'badge-success' :
+          req.status === 'REJECTED' ? 'badge-danger' : 'badge-info';
+        
+        html += `<div style="padding: 1rem; margin-bottom: 0.5rem; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #fff;">
+          <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 0.5rem;">
+            <div style="flex: 1;">
+              <strong>${req.type === 'ARCHIVE' ? 'Archive' : 'Edit'} Request</strong>
+              <span class="badge ${statusBadge}" style="margin-left: 0.5rem;">${req.status}</span>
+              <div style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
+                Employee ID: ${req.employeeId || 'N/A'}<br>
+                Requested by: ${req.requestedByName || req.requestedByAdminKey || 'N/A'} (${req.requestedByRole || ''})<br>
+                Created: ${req.createdAt ? new Date(req.createdAt).toLocaleString() : 'N/A'}
+                ${req.approvedAt ? `<br>Decision: ${req.approvedByName || 'N/A'} (${req.approvedByRole || ''}) at ${new Date(req.approvedAt).toLocaleString()}` : ''}
+                ${req.decisionNote ? `<br>Note: ${req.decisionNote}` : ''}
+              </div>
+            </div>
+            ${req.status === 'PENDING' && (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1') ? `
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-xs btn-success" onclick="AdminPage.approveHrmRequest('${req.requestId}')">Approve</button>
+              <button class="btn btn-xs btn-danger" onclick="AdminPage.rejectHrmRequest('${req.requestId}')">Reject</button>
+            </div>
+            ` : ''}
+          </div>
+        </div>`;
+      }
+      
+      html += '</div>';
+      container.innerHTML = html;
+    } catch (err) {
+      container.innerHTML = `<p style="color: #dc2626;">Error loading notifications: ${err.message || 'Unknown error'}</p>`;
+    }
+  }
+
+  async function approveHrmRequest(requestId) {
+    if (!adminKey) return;
+    const result = await Swal.fire({
+      title: 'Approve Request',
+      input: 'textarea',
+      inputLabel: 'Optional Note',
+      inputPlaceholder: 'Add a note (optional)',
+      showCancelButton: true,
+      confirmButtonText: 'Approve',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#059669'
+    });
+    
+    if (result.isConfirmed) {
+      try {
+        UI.showLoading('Approving', 'Processing approval...');
+        const res = await Api.call('decideHrmRequest', {
+          key: adminKey,
+          requestId: requestId,
+          decision: 'APPROVE',
+          reason: result.value || ''
+        });
+        UI.closeLoading();
+        if (res && res.success) {
+          await UI.showSuccess('Success', 'Request approved and executed successfully!');
+          await loadHrmNotifications();
+          await loadHrmStaffStats();
+          await loadStaffList(currentStaffPage);
+        } else {
+          throw new Error(res.message || 'Failed to approve request.');
+        }
+      } catch (err) {
+        UI.closeLoading();
+        await UI.showError('Error', err.message || 'Failed to approve request.');
+      }
+    }
+  }
+
+  async function rejectHrmRequest(requestId) {
+    if (!adminKey) return;
+    const result = await Swal.fire({
+      title: 'Reject Request',
+      input: 'textarea',
+      inputLabel: 'Reason (Required)',
+      inputPlaceholder: 'Please provide a reason for rejection',
+      inputValidator: (value) => {
+        if (!value || !value.trim()) {
+          return 'Reason is required';
+        }
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Reject',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#dc2626'
+    });
+    
+    if (result.isConfirmed) {
+      try {
+        UI.showLoading('Rejecting', 'Processing rejection...');
+        const res = await Api.call('decideHrmRequest', {
+          key: adminKey,
+          requestId: requestId,
+          decision: 'REJECT',
+          reason: result.value || ''
+        });
+        UI.closeLoading();
+        if (res && res.success) {
+          await UI.showSuccess('Success', 'Request rejected successfully.');
+          await loadHrmNotifications();
+        } else {
+          throw new Error(res.message || 'Failed to reject request.');
+        }
+      } catch (err) {
+        UI.closeLoading();
+        await UI.showError('Error', err.message || 'Failed to reject request.');
+      }
+    }
+  }
 
   /**
    * Load HRM Staff Dashboard statistics
@@ -3042,56 +3408,88 @@ const AdminPage = (function () {
   async function loadHrmStaffStats() {
     if (!adminKey) return;
 
-    if (adminRole !== 'HRM_ADMIN' && adminRole !== 'SUPER_ADMIN') return;
+    // All HRM admins (including HRM_VIEWER) should see stats
+    if (!isHrmAdminRole(adminRole) && adminRole !== 'SUPER_ADMIN') return;
 
     try {
-      // For HRM_ADMIN and SUPER_ADMIN, formationId is optional (can search all)
-      const formationIdForStats = currentFormationId || adminFormationId || '';
+      // All HRM admins see nationwide stats (all formations)
+      const formationIdForStats = ''; // Empty = all formations nationwide
 
       UI.showLoading('Loading', 'Fetching staff statistics...');
-      const searchRes = await Api.call('searchStaff', {
-        key: adminKey,
-        formationId: formationIdForStats, // Can be empty for HRM_ADMIN/SUPER_ADMIN
-        query: '',
-        page: 1,
-        limit: 1000,
-        includeArchived: true
-      });
+      
+      // Fetch all staff records with pagination support
+      let allStaff = [];
+      let page = 1;
+      const limit = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const searchRes = await Api.call('searchStaff', {
+          key: adminKey,
+          formationId: formationIdForStats, // Empty = all formations nationwide
+          query: '',
+          page: page,
+          limit: limit,
+          includeArchived: true
+        });
+        
+        if (searchRes && searchRes.success && searchRes.data && searchRes.data.results) {
+          const results = searchRes.data.results || [];
+          allStaff = allStaff.concat(results);
+          
+          const pagination = searchRes.data.pagination || {};
+          hasMore = pagination.hasNext === true && results.length === limit;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+      
       UI.closeLoading();
 
-      if (searchRes && searchRes.success && searchRes.data) {
-        const allStaff = searchRes.data.results || [];
-        const active = allStaff.filter(s => s.status === 'ACTIVE').length;
-        const archived = allStaff.filter(s => s.status === 'ARCHIVED').length;
+      // Always update stats (even if 0)
+      const active = allStaff.filter(s => s.status === 'ACTIVE').length;
+      const archived = allStaff.filter(s => s.status === 'ARCHIVED').length;
 
-        let withDocs = 0;
-        for (const staff of allStaff.slice(0, 50)) { // Limit to first 50 for performance
-          try {
-            const docRes = await Api.call('listStaffDocuments', {
-              key: adminKey,
-              employeeId: staff.employeeId
-            });
-            if (docRes && docRes.success && docRes.data && docRes.data.documents && docRes.data.documents.length > 0) {
-              withDocs++;
-            }
-          } catch (e) {
-            // Ignore errors
-          }
+      const totalEl = document.getElementById('hrmTotalStaff');
+      const activeEl = document.getElementById('hrmActiveStaff');
+      const archivedEl = document.getElementById('hrmArchivedStaff');
+      const pendingLeavesEl = document.getElementById('hrmPendingLeaves');
+
+      if (totalEl) totalEl.textContent = String(allStaff.length || 0);
+      if (activeEl) activeEl.textContent = String(active || 0);
+      if (archivedEl) archivedEl.textContent = String(archived || 0);
+      
+      // Load pending leaves count
+      try {
+        const leavesRes = await Api.call('listLeaveRequests', {
+          key: adminKey,
+          status: 'PENDING'
+        });
+        if (leavesRes && leavesRes.success && leavesRes.data && leavesRes.data.requests) {
+          const pendingLeaves = leavesRes.data.requests.filter(l => l.status === 'PENDING').length;
+          if (pendingLeavesEl) pendingLeavesEl.textContent = String(pendingLeaves || 0);
+        } else {
+          if (pendingLeavesEl) pendingLeavesEl.textContent = '0';
         }
-
-        const totalEl = document.getElementById('hrmStaffTotal');
-        const activeEl = document.getElementById('hrmStaffActive');
-        const archivedEl = document.getElementById('hrmStaffArchived');
-        const withDocsEl = document.getElementById('hrmStaffWithDocs');
-
-        if (totalEl) totalEl.textContent = allStaff.length;
-        if (activeEl) activeEl.textContent = active;
-        if (archivedEl) archivedEl.textContent = archived;
-        if (withDocsEl) withDocsEl.textContent = withDocs;
+      } catch (e) {
+        console.warn('Failed to load pending leaves:', e);
+        if (pendingLeavesEl) pendingLeavesEl.textContent = '0';
       }
     } catch (err) {
       UI.closeLoading();
       console.error('Failed to load HRM staff stats:', err);
+      
+      // Set default values on error
+      const totalEl = document.getElementById('hrmTotalStaff');
+      const activeEl = document.getElementById('hrmActiveStaff');
+      const archivedEl = document.getElementById('hrmArchivedStaff');
+      const pendingLeavesEl = document.getElementById('hrmPendingLeaves');
+      
+      if (totalEl) totalEl.textContent = '0';
+      if (activeEl) activeEl.textContent = '0';
+      if (archivedEl) archivedEl.textContent = '0';
+      if (pendingLeavesEl) pendingLeavesEl.textContent = '0';
     }
   }
 
@@ -3115,8 +3513,8 @@ const AdminPage = (function () {
 
     try {
       UI.showLoading('Loading', 'Fetching formations and departments...');
-      // Load formations (for SUPER_ADMIN and HRM_ADMIN)
-      if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') {
+      // Load formations (for SUPER_ADMIN and HRM admins)
+      if (adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) {
         const formRes = await Api.call('listFormations', { key: adminKey });
         if (formRes && formRes.success && formRes.data && formRes.data.formations) {
           formations = formRes.data.formations.filter(f => f.active !== false);
@@ -3178,7 +3576,7 @@ const AdminPage = (function () {
               <option value="Other" ${(step1InitialData.gender === 'Other') ? 'selected' : ''}>Other</option>
             </select>
           </div>
-          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
           <div style="grid-column: 1 / -1;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (optional - can be added later)</label>
             <select id="swalStaffFormation" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
@@ -3426,7 +3824,7 @@ const AdminPage = (function () {
           <p style="text-align: left; color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
             <strong>Personal Information:</strong> Fill in the following details (all fields are optional).
           </p>
-          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
           <div style="grid-column: 1 / -1; margin-bottom: 1rem; padding: 1rem; border: 1px dashed #059669; border-radius: 8px; background: #f0fdf4;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #059669;">Passport / Profile Picture (optional)</label>
             <p style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">JPEG, PNG or WebP. Max 2MB. Stored in staff profile folder on Drive.</p>
@@ -3623,7 +4021,7 @@ const AdminPage = (function () {
           const employeeId = res.data?.employeeId || 'N/A';
           const formationId = res.data?.formationId || step1Data.formationId || currentFormationId || adminFormationId || '';
 
-          if (profilePictureData && employeeId && (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')) {
+          if (profilePictureData && employeeId && (adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole))) {
             UI.showLoading('Uploading', 'Uploading profile picture...');
             try {
               await Api.call('uploadStaffProfilePicture', {
@@ -3704,15 +4102,20 @@ const AdminPage = (function () {
 
     const query = document.getElementById('hrmStaffSearchInput')?.value.trim() || '';
     const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
+    const formationFilterEl = document.getElementById('hrmStaffFormationFilter');
+    let formationIdForSearch = '';
+    if (formationFilterEl) {
+      formationIdForSearch = formationFilterEl.value || '';
+    } else {
+      // Fallback for non-HRM roles
+      formationIdForSearch = (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')
+        ? (currentFormationId || adminFormationId || '')
+        : (currentFormationId || adminFormationId || '');
+    }
 
     container.textContent = 'Loading staff records...';
 
     try {
-      // For HRM_ADMIN and SUPER_ADMIN, formationId is optional (can search all)
-      // For others, use currentFormationId or adminFormationId
-      const formationIdForSearch = (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')
-        ? (currentFormationId || adminFormationId || '')
-        : (currentFormationId || adminFormationId || '');
 
       const res = await Api.call('searchStaff', {
         key: adminKey,
@@ -3742,7 +4145,8 @@ const AdminPage = (function () {
       let formationMap = {};
       let departmentMap = {};
       try {
-        if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') {
+        // All HRM admins see all formations (nationwide)
+        if (adminRole === 'SUPER_ADMIN' || isHrmAdminRole(adminRole)) {
           const formRes = await Api.call('listFormations', { key: adminKey });
           if (formRes && formRes.success && formRes.data && formRes.data.formations) {
             formRes.data.formations.forEach(f => {
@@ -3827,8 +4231,10 @@ const AdminPage = (function () {
           <td><span class="badge ${s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${s.status || 'ACTIVE'}</span></td>
           <td style="white-space: nowrap;">
             <button class="btn btn-xs btn-primary" onclick="AdminPage.showFullStaffProfile('${s.employeeId}')" title="View full profile">View</button>
+            ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
             <button class="btn btn-xs btn-secondary" onclick="AdminPage.editStaff('${s.employeeId}')" title="Edit staff record">Edit</button>
             ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" onclick="AdminPage.archiveStaffConfirm('${s.employeeId}')" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success" onclick="AdminPage.unarchiveStaff('${s.employeeId}')" title="Restore archived record">Restore</button>`}
+            ` : ''}
           </td>
         </tr>`;
       }
@@ -3838,14 +4244,45 @@ const AdminPage = (function () {
 
       const paginationEl = document.getElementById('hrmStaffPagination');
       if (paginationEl && pagination.totalPages > 1) {
-        let paginationHtml = '';
+        let paginationHtml = '<div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">';
         if (pagination.hasPrev) {
           paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${pagination.page - 1})">Previous</button>`;
         }
-        paginationHtml += `<span style="margin: 0 1rem;">Page ${pagination.page} of ${pagination.totalPages} (${pagination.total} total)</span>`;
+        
+        // Page number buttons (show up to 5 pages around current)
+        const totalPages = pagination.totalPages;
+        const currentPage = pagination.page;
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, currentPage + 2);
+        
+        if (startPage > 1) {
+          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(1)">1</button>`;
+          if (startPage > 2) {
+            paginationHtml += `<span style="padding: 0 0.5rem;">...</span>`;
+          }
+        }
+        
+        for (let p = startPage; p <= endPage; p++) {
+          if (p === currentPage) {
+            paginationHtml += `<button class="btn btn-sm btn-primary" style="background: var(--nysc-green);" disabled>${p}</button>`;
+          } else {
+            paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${p})">${p}</button>`;
+          }
+        }
+        
+        if (endPage < totalPages) {
+          if (endPage < totalPages - 1) {
+            paginationHtml += `<span style="padding: 0 0.5rem;">...</span>`;
+          }
+          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${totalPages})">${totalPages}</button>`;
+        }
+        
+        paginationHtml += `<span style="margin: 0 0.5rem; color: #666;">Page ${currentPage} of ${totalPages} (${pagination.total} total)</span>`;
+        
         if (pagination.hasNext) {
           paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${pagination.page + 1})">Next</button>`;
         }
+        paginationHtml += '</div>';
         paginationEl.innerHTML = paginationHtml;
       } else if (paginationEl) {
         paginationEl.innerHTML = '';
@@ -3871,7 +4308,8 @@ const AdminPage = (function () {
    * Uses current filters: formationId, includeArchived, search query.
    */
   async function downloadStaffRecordsAsCsv() {
-    if (!adminKey || (adminRole !== 'HRM_ADMIN' && adminRole !== 'SUPER_ADMIN')) return;
+    if (!adminKey || (!isHrmAdminActionRole(adminRole) && adminRole !== 'SUPER_ADMIN')) return;
+    // All HRM_ADMIN roles can export (backend enforces fine-grained permissions)
     // HRM_ADMIN and SUPER_ADMIN: pass empty formationId to export ALL staff records (same behavior as Super Admin)
     const formationIdForExport = '';
     const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
@@ -4047,8 +4485,8 @@ const AdminPage = (function () {
         documentsHtml = '<div style="margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;"><em style="color: #6b7280;">No documents uploaded yet.</em></div>';
       }
 
-      // Check if user can upload (HRM_ADMIN or SUPER_ADMIN)
-      const canUpload = adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN';
+      // Check if user can upload (HRM admins or SUPER_ADMIN)
+      const canUpload = isHrmAdminActionRole(adminRole) || adminRole === 'SUPER_ADMIN';
 
       UI.closeLoading();
       const result = await Swal.fire({
@@ -4239,8 +4677,8 @@ const AdminPage = (function () {
         return String(dateValue);
       };
 
-      const canEdit = adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN';
-      const canArchive = canEdit;
+      const canEdit = isHrmAdminActionRole(adminRole) || adminRole === 'SUPER_ADMIN';
+      const canArchive = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1' || adminRole === 'HRM_ADMIN_2';
 
       const SERVICE_RECORD_TAB_CONFIG = {
         appointments: {
@@ -4412,7 +4850,7 @@ const AdminPage = (function () {
 
             <div style="text-align: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e5e7eb;">
               <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                ${(adminRole === 'HRM_ADMIN' || adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_VIEWER') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
+                ${(isHrmAdminRole(adminRole) || adminRole === 'SUPER_ADMIN') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
                 ${canEdit ? `<button id="editStaffBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Edit Record</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
@@ -4836,7 +5274,7 @@ const AdminPage = (function () {
 
       try {
         UI.showLoading('Loading', 'Fetching formations and departments...');
-        if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') {
+        if (adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) {
           const formRes = await Api.call('listFormations', { key: adminKey });
           if (formRes && formRes.success && formRes.data && formRes.data.formations) {
             formations = formRes.data.formations.filter(f => f.active !== false);
@@ -4864,7 +5302,7 @@ const AdminPage = (function () {
         title: 'Edit Staff Record',
         width: '800px',
         html: `
-          ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
           <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Profile Picture</label>
             <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -4912,7 +5350,7 @@ const AdminPage = (function () {
                 <option value="Other" ${staff.gender === 'Other' ? 'selected' : ''}>Other</option>
               </select>
             </div>
-            ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+            ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
             <div style="grid-column: 1 / -1;">
               <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">Formation (can be changed)</label>
               <select id="swalEditFormation" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
@@ -5321,6 +5759,72 @@ const AdminPage = (function () {
                       await UI.showSuccess('Success', 'Staff record updated successfully!');
                       await loadHrmStaffStats();
                       await loadStaffList(currentStaffPage);
+                    } else if (updateRes && updateRes.code === 'HRM_EDIT_REQUIRES_APPROVAL') {
+                      // HRM_ADMIN_3 flow: cannot edit directly, must request approval (handled by backend)
+                      UI.closeLoading();
+                      await Swal.fire({
+                        icon: 'warning',
+                        title: 'Edit Requires Approval',
+                        text: 'Your edit request will be sent to your superior for approval.',
+                        confirmButtonText: 'OK'
+                      });
+                      try {
+                        UI.showLoading('Submitting Request', 'Sending edit request...');
+                        const reqRes = await Api.call('requestEdit', {
+                          key: adminKey,
+                          employeeId: employeeId,
+                          staff: {
+                            employeeId: employeeId,
+                            formationId: formationId,
+                            subUnitId: subUnitId,
+                            fileNumber: fileNumber || '',
+                            ippisNumber: ippisNumber || '',
+                            email: email || '',
+                            telephone: telephone || '',
+                            surname: surname,
+                            otherNames: otherNames || '',
+                            dob: dob || '',
+                            dateOfFirstAppointment: firstAppointment || '',
+                            dateOfPresentAppointment: presentAppointment || '',
+                            confirmationDate: confirmationDate || '',
+                            pfa: pfa || '',
+                            pfaPinNo: pfaPinNo || '',
+                            cadre: cadre || '',
+                            rank: rank || '',
+                            gradeLevel: gradeLevel || '',
+                            stateOfOrigin: stateOfOrigin || '',
+                            lga: lga || '',
+                            qualification: qualification || '',
+                            gender: gender || '',
+                            tertiaryInstitution: tertiaryInstitution || '',
+                            tertiaryFromYear: tertiaryFromYear || '',
+                            tertiaryToYear: tertiaryToYear || '',
+                            secondarySchool: secondarySchool || '',
+                            secondaryFromYear: secondaryFromYear || '',
+                            secondaryToYear: secondaryToYear || '',
+                            primarySchool: primarySchool || '',
+                            primaryFromYear: primaryFromYear || '',
+                            primaryToYear: primaryToYear || '',
+                            maritalStatus: maritalStatus || '',
+                            spouseName: spouseName || '',
+                            homeAddress: homeAddress || '',
+                            permanentHomeAddress: permanentAddress || '',
+                            spouseAddress: spouseAddress || '',
+                            nextOfKin: nextOfKin || '',
+                            nextOfKinAddress: nextOfKinAddress || '',
+                            status
+                          }
+                        });
+                        UI.closeLoading();
+                        if (reqRes && reqRes.success) {
+                          await UI.showSuccess('Request Submitted', 'Your edit request has been sent for approval.');
+                        } else {
+                          throw new Error(reqRes && reqRes.message || 'Failed to submit edit request.');
+                        }
+                      } catch (reqErr) {
+                        UI.closeLoading();
+                        await UI.showError('Error', reqErr.message || 'Failed to submit edit request.');
+                      }
                     } else {
                       UI.closeLoading();
                       throw new Error(updateRes.message || 'Failed to update staff record.');
@@ -5376,8 +5880,32 @@ const AdminPage = (function () {
         await UI.showSuccess('Success', 'Staff record archived successfully!');
         await loadHrmStaffStats();
         await loadStaffList(currentStaffPage);
+      } else if (res && res.code === 'HRM_ARCHIVE_REQUIRES_APPROVAL') {
+        // HRM_ADMIN_2 flow: cannot archive directly, must request approval (handled by backend)
+        await Swal.fire({
+          icon: 'warning',
+          title: 'You cannot perform this action!',
+          text: 'Kindly wait for approval from your superior.',
+          confirmButtonText: 'OK'
+        });
+        try {
+          UI.showLoading('Requesting Approval', 'Sending archive request to your superiors...');
+          const reqRes = await Api.call('requestArchive', {
+            key: adminKey,
+            employeeId
+          });
+          UI.closeLoading();
+          if (reqRes && reqRes.success) {
+            await UI.showSuccess('Request Submitted', 'Your archive request has been sent for approval.');
+          } else {
+            throw new Error(reqRes && reqRes.message || 'Failed to submit archive request.');
+          }
+        } catch (reqErr) {
+          UI.closeLoading();
+          await UI.showError('Error', reqErr.message || 'Failed to submit archive request.');
+        }
       } else {
-        throw new Error(res.message || 'Failed to archive staff record.');
+        throw new Error(res && res.message || 'Failed to archive staff record.');
       }
     } catch (err) {
       await UI.showError('Error', err.message || 'Failed to archive staff record.');
@@ -5441,7 +5969,9 @@ const AdminPage = (function () {
    */
   async function loadHrmAdminsTable() {
     const container = document.getElementById('hrmAdminsTable');
-    if (!container || !adminKey || adminRole !== 'SUPER_ADMIN') return;
+    if (!container || !adminKey) return;
+    // Allow SUPER_ADMIN only (backend enforces this)
+    if (adminRole !== 'SUPER_ADMIN') return;
 
     container.textContent = 'Loading HRM admins...';
 
@@ -5460,17 +5990,21 @@ const AdminPage = (function () {
         return;
       }
 
-      let html = '<table><thead><tr><th>S/N</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>S/N</th><th>Admin Key</th><th>Name</th><th>Email</th><th>Role</th><th>Formation</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
 
       for (let idx = 0; idx < admins.length; idx++) {
         const admin = admins[idx];
         html += `<tr>
           <td>${idx + 1}</td>
+          <td>${admin.adminId || ''}</td>
+          <td>${admin.name || ''}</td>
           <td>${admin.email || ''}</td>
           <td><span class="badge badge-info">${admin.role || ''}</span></td>
+          <td>${admin.formationId || ''}</td>
           <td><span class="badge ${admin.active ? 'badge-success' : 'badge-warning'}">${admin.active ? 'Active' : 'Inactive'}</span></td>
           <td>
             <button class="btn btn-xs btn-secondary" onclick="AdminPage.editHrmAdminRole('${admin.adminId}', '${admin.role || ''}')">Change Role</button>
+            <button class="btn btn-xs btn-info" onclick="AdminPage.showAssignTempRoleModal('${admin.adminId}')" title="Assign temporary privileges">Temp Role</button>
             ${admin.active ?
             `<button class="btn btn-xs btn-danger" onclick="AdminPage.deactivateHrmAdmin('${admin.adminId}')">Deactivate</button>` :
             `<button class="btn btn-xs btn-success" onclick="AdminPage.activateHrmAdmin('${admin.adminId}')">Activate</button>`
@@ -5490,7 +6024,9 @@ const AdminPage = (function () {
    * Show Create HRM Admin modal
    */
   async function showCreateHrmAdminModal() {
-    if (!adminKey || adminRole !== 'SUPER_ADMIN') {
+    if (!adminKey) return;
+    // Allow SUPER_ADMIN only (backend enforces this)
+    if (adminRole !== 'SUPER_ADMIN') {
       await UI.showError('Access Denied', 'Only SUPER_ADMIN can create HRM admins.');
       return;
     }
@@ -5500,14 +6036,32 @@ const AdminPage = (function () {
       return;
     }
 
+    // Load formations for selection
+    let formations = [];
+    try {
+      const formRes = await Api.call('listFormations', { key: adminKey });
+      if (formRes && formRes.success && formRes.data && formRes.data.formations) {
+        formations = formRes.data.formations.filter(f => f.active !== false);
+      }
+    } catch (err) {
+      console.warn('Could not load formations:', err);
+    }
+
     const result = await Swal.fire({
       title: 'Create HRM Admin',
       html: `
-        <input id="swalHrmAdminId" class="swal2-input" placeholder="Admin ID *">
-        <input id="swalHrmAdminEmail" class="swal2-input" type="email" placeholder="Email Address *">
+        <input id="swalHrmAdminId" class="swal2-input" placeholder="Admin Key (for login) *">
+        <input id="swalHrmAdminName" class="swal2-input" placeholder="Name *" required>
+        <input id="swalHrmAdminEmail" class="swal2-input" type="email" placeholder="Email Address (optional)">
+        <select id="swalHrmAdminFormation" class="swal2-select" style="width: 100%;">
+          <option value="">Select Formation *</option>
+          ${formations.map(f => `<option value="${f.formationId || ''}">${f.name || f.formationId || ''}</option>`).join('')}
+        </select>
         <select id="swalHrmAdminRole" class="swal2-select" style="width: 100%;">
           <option value="">Select Role *</option>
-          <option value="HRM_ADMIN">HRM Admin (Full CRUD)</option>
+          <option value="HRM_ADMIN_1">HRM Admin Level 1 (Full CRUD + Approve Requests)</option>
+          <option value="HRM_ADMIN_2">HRM Admin Level 2 (Create/Edit, Archive Requires Approval)</option>
+          <option value="HRM_ADMIN_3">HRM Admin Level 3 (Add/View Only, Edit Requires Approval)</option>
           <option value="HRM_VIEWER">HRM Viewer (Read-Only)</option>
         </select>
       `,
@@ -5518,15 +6072,21 @@ const AdminPage = (function () {
       confirmButtonColor: '#059669',
       preConfirm: async () => {
         const adminId = document.getElementById('swalHrmAdminId').value.trim();
+        const name = document.getElementById('swalHrmAdminName').value.trim();
         const email = document.getElementById('swalHrmAdminEmail').value.trim();
+        const formationId = document.getElementById('swalHrmAdminFormation').value.trim();
         const role = document.getElementById('swalHrmAdminRole').value;
 
         if (!adminId) {
-          Swal.showValidationMessage('Admin ID is required.');
+          Swal.showValidationMessage('Admin Key is required.');
           return false;
         }
-        if (!email) {
-          Swal.showValidationMessage('Email is required.');
+        if (!name) {
+          Swal.showValidationMessage('Name is required.');
+          return false;
+        }
+        if (!formationId) {
+          Swal.showValidationMessage('Formation is required.');
           return false;
         }
         if (!role) {
@@ -5534,17 +6094,21 @@ const AdminPage = (function () {
           return false;
         }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          Swal.showValidationMessage('Please enter a valid email address.');
-          return false;
+        if (email) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            Swal.showValidationMessage('Please enter a valid email address.');
+            return false;
+          }
         }
 
         try {
           const res = await Api.call('createHrmAdmin', {
             key: adminKey,
             adminId: adminId,
+            name: name,
             email: email,
+            formationId: formationId,
             role: role
           });
 
@@ -5570,8 +6134,10 @@ const AdminPage = (function () {
    * Edit HRM Admin Role
    */
   async function editHrmAdminRole(adminId, currentRole) {
-    if (!adminKey || adminRole !== 'SUPER_ADMIN') {
-      await UI.showError('Access Denied', 'Only SUPER_ADMIN can update HRM admin roles.');
+    if (!adminKey) return;
+    // Allow SUPER_ADMIN and HRM_ADMIN_1 (backend will enforce)
+    if (adminRole !== 'SUPER_ADMIN' && adminRole !== 'HRM_ADMIN_1') {
+      await UI.showError('Access Denied', 'Only SUPER_ADMIN or HRM_ADMIN_1 can update HRM admin roles.');
       return;
     }
 
@@ -5585,7 +6151,9 @@ const AdminPage = (function () {
       html: `
         <p style="text-align: left; margin-bottom: 1rem;"><strong>Admin ID:</strong> ${adminId}</p>
         <select id="swalHrmAdminRoleEdit" class="swal2-select" style="width: 100%;">
-          <option value="HRM_ADMIN" ${currentRole === 'HRM_ADMIN' ? 'selected' : ''}>HRM Admin (Full CRUD)</option>
+          <option value="HRM_ADMIN_1" ${currentRole === 'HRM_ADMIN_1' ? 'selected' : ''}>HRM Admin Level 1 (Full CRUD + Approve Requests)</option>
+          <option value="HRM_ADMIN_2" ${currentRole === 'HRM_ADMIN_2' ? 'selected' : ''}>HRM Admin Level 2 (Create/Edit, Archive Requires Approval)</option>
+          <option value="HRM_ADMIN_3" ${currentRole === 'HRM_ADMIN_3' ? 'selected' : ''}>HRM Admin Level 3 (Add/View Only, Edit Requires Approval)</option>
           <option value="HRM_VIEWER" ${currentRole === 'HRM_VIEWER' ? 'selected' : ''}>HRM Viewer (Read-Only)</option>
         </select>
       `,
@@ -5631,8 +6199,8 @@ const AdminPage = (function () {
    * Deactivate HRM Admin
    */
   async function deactivateHrmAdmin(adminId) {
-    if (!adminKey || adminRole !== 'SUPER_ADMIN') {
-      await UI.showError('Access Denied', 'Only SUPER_ADMIN can deactivate HRM admins.');
+    if (!adminKey || (adminRole !== 'SUPER_ADMIN' && adminRole !== 'HRM_ADMIN_1')) {
+      await UI.showError('Access Denied', 'Only SUPER_ADMIN or HRM_ADMIN_1 can deactivate HRM admins.');
       return;
     }
 
@@ -5666,8 +6234,8 @@ const AdminPage = (function () {
    * Activate HRM Admin
    */
   async function activateHrmAdmin(adminId) {
-    if (!adminKey || adminRole !== 'SUPER_ADMIN') {
-      await UI.showError('Access Denied', 'Only SUPER_ADMIN can activate HRM admins.');
+    if (!adminKey || (adminRole !== 'SUPER_ADMIN' && adminRole !== 'HRM_ADMIN_1')) {
+      await UI.showError('Access Denied', 'Only SUPER_ADMIN or HRM_ADMIN_1 can activate HRM admins.');
       return;
     }
 
@@ -5701,11 +6269,105 @@ const AdminPage = (function () {
   if (!window.AdminPage) {
     window.AdminPage = {};
   }
+  /**
+   * Show modal to assign temporary HRM role override
+   */
+  async function showAssignTempRoleModal(adminId) {
+    if (!adminKey) return;
+    if (adminRole !== 'SUPER_ADMIN' && adminRole !== 'HRM_ADMIN_1') {
+      await UI.showError('Access Denied', 'Only SUPER_ADMIN or HRM_ADMIN_1 can assign temporary roles.');
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: 'Assign Temporary HRM Privileges',
+      html: `
+        <p style="text-align: left; margin-bottom: 1rem;"><strong>Admin ID:</strong> ${adminId}</p>
+        <div style="text-align: left; margin-bottom: 1rem;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Privileges</label>
+          <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <input type="checkbox" id="tempCanCreate" />
+            <span>Can Create Staff</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <input type="checkbox" id="tempCanEdit" />
+            <span>Can Edit Staff</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="checkbox" id="tempCanArchive" />
+            <span>Can Archive Staff</span>
+          </label>
+        </div>
+        <div style="text-align: left;">
+          <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Duration</label>
+          <select id="tempRoleDuration" class="swal2-select" style="width: 100%;">
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="120">2 hours</option>
+            <option value="360">6 hours</option>
+            <option value="720">12 hours</option>
+            <option value="1440">24 hours</option>
+          </select>
+        </div>
+        <input id="tempRoleNotes" class="swal2-input" placeholder="Optional notes" style="margin-top: 1rem;">
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Assign',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#059669',
+      preConfirm: async () => {
+        const canCreate = document.getElementById('tempCanCreate')?.checked || false;
+        const canEdit = document.getElementById('tempCanEdit')?.checked || false;
+        const canArchive = document.getElementById('tempCanArchive')?.checked || false;
+        const duration = parseInt(document.getElementById('tempRoleDuration')?.value || '30', 10);
+        const notes = document.getElementById('tempRoleNotes')?.value.trim() || '';
+
+        if (!canCreate && !canEdit && !canArchive) {
+          Swal.showValidationMessage('Please select at least one privilege.');
+          return false;
+        }
+
+        const privileges = [];
+        if (canCreate) privileges.push('CAN_CREATE');
+        if (canEdit) privileges.push('CAN_EDIT');
+        if (canArchive) privileges.push('CAN_ARCHIVE');
+
+        try {
+          const res = await Api.call('assignTemporaryHrmRole', {
+            key: adminKey,
+            adminId: adminId,
+            privileges: privileges,
+            durationMinutes: duration,
+            notes: notes
+          });
+
+          if (res && res.success) {
+            return { success: true };
+          } else {
+            throw new Error(res.message || 'Failed to assign temporary role.');
+          }
+        } catch (err) {
+          Swal.showValidationMessage(err.message || 'Failed to assign temporary role.');
+          return false;
+        }
+      }
+    });
+
+    if (result.isConfirmed && result.value && result.value.success) {
+      await UI.showSuccess('Success', 'Temporary role assigned successfully!');
+      await loadHrmAdminsTable();
+    }
+  }
+
   window.AdminPage.loadHrmAdminsTable = loadHrmAdminsTable;
   window.AdminPage.showCreateHrmAdminModal = showCreateHrmAdminModal;
   window.AdminPage.editHrmAdminRole = editHrmAdminRole;
   window.AdminPage.deactivateHrmAdmin = deactivateHrmAdmin;
   window.AdminPage.activateHrmAdmin = activateHrmAdmin;
+  window.AdminPage.showAssignTempRoleModal = showAssignTempRoleModal;
+  window.AdminPage.approveHrmRequest = approveHrmRequest;
+  window.AdminPage.rejectHrmRequest = rejectHrmRequest;
 
   // ============================================================================
   // HRM AUDIT LOGS FUNCTIONS (SUPER_ADMIN ONLY)
@@ -6167,8 +6829,9 @@ const AdminPage = (function () {
       </button>
     `;
 
-    // Add admin actions for SUPER_ADMIN and HRM_ADMIN
-    if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') {
+    // Add admin actions for SUPER_ADMIN and HRM_ADMIN_1
+    // Note: HRM_ADMIN_1 can manage admins (backend enforces fine-grained permissions)
+    if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1') {
       html += `
         <button class="action-btn" data-view="admins">
           <span class="action-btn-icon">👥</span>
@@ -6178,15 +6841,9 @@ const AdminPage = (function () {
           <span class="action-btn-icon">📜</span>
           <span>Logs</span>
         </button>
-      `;
-    }
-
-    // Add "Add Staff" button for SUPER_ADMIN and HRM_ADMIN (not a view, but an action)
-    if (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') {
-      html += `
-        <button class="action-btn action-btn-primary" id="addStaffBtn" style="background: var(--nysc-green); color: white; border: none;">
-          <span class="action-btn-icon">➕</span>
-          <span>Add Staff</span>
+        <button class="action-btn" data-view="notifications">
+          <span class="action-btn-icon">🔔</span>
+          <span>Notifications</span>
         </button>
       `;
     }
@@ -6205,13 +6862,6 @@ const AdminPage = (function () {
       });
     });
 
-    // Setup click handler for "Add Staff" button
-    const addStaffBtn = document.getElementById('addStaffBtn');
-    if (addStaffBtn) {
-      addStaffBtn.addEventListener('click', () => {
-        showAddStaffModal();
-      });
-    }
   }
 
   function loadModuleWorkspace(module) {
@@ -6388,9 +7038,9 @@ const AdminPage = (function () {
   async function loadHrmView(view, container) {
     if (view === 'dashboard') {
       container.innerHTML = `
-        <section class="card">
+        <section class="card card-full-width">
           <h2>HRM Overview</h2>
-          <div class="dashboard-stats">
+          <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
             <div class="stat-card">
               <div class="stat-value" id="hrmTotalStaff">-</div>
               <div class="stat-label">Total Staff</div>
@@ -6398,6 +7048,10 @@ const AdminPage = (function () {
             <div class="stat-card">
               <div class="stat-value" id="hrmActiveStaff">-</div>
               <div class="stat-label">Active Staff</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="hrmArchivedStaff">-</div>
+              <div class="stat-label">Archived Staff</div>
             </div>
             <div class="stat-card">
               <div class="stat-value" id="hrmPendingLeaves">-</div>
@@ -6413,17 +7067,36 @@ const AdminPage = (function () {
         <section class="card card-full-width">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
             <h2>Staff Records</h2>
-            ${(adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN') ? `
+            ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
               <button class="btn btn-secondary" id="downloadStaffRecordsBtn" title="Download full staff records as CSV or Excel">
                 <span>📥 Download / Extract</span>
               </button>
-              <button class="btn btn-primary" id="addStaffBtnInView" style="background: var(--nysc-green);">
-                <span>➕ Add Staff</span>
+            </div>
+            ` : ''}
+            ${(adminRole === 'HRM_VIEWER') ? `
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button class="btn btn-secondary" id="downloadStaffRecordsBtn" title="Download full staff records as CSV or Excel">
+                <span>📥 Download / Extract</span>
               </button>
             </div>
             ` : ''}
           </div>
+          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
+          <div class="contextual-actions" style="margin-bottom: 1rem;">
+            <button class="btn btn-primary" id="addStaffBtnInView" style="background: var(--nysc-green);">
+              <span>➕ Add Staff</span>
+            </button>
+          </div>
+          ` : ''}
+          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminRole(adminRole)) ? `
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Formation Filter</label>
+            <select id="hrmStaffFormationFilter" class="swal2-select" style="width: 100%; max-width: 300px; padding: 0.5rem;">
+              <option value="">View All Staff Records</option>
+            </select>
+          </div>
+          ` : ''}
           <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
             <input 
               type="text" 
@@ -6444,7 +7117,7 @@ const AdminPage = (function () {
         </section>
       `;
 
-      // Setup Add Staff button in view
+      // Setup Add Staff button in contextual-actions (near Download button)
       const addStaffBtnInView = document.getElementById('addStaffBtnInView');
       if (addStaffBtnInView) {
         addStaffBtnInView.addEventListener('click', () => {
@@ -6452,12 +7125,32 @@ const AdminPage = (function () {
         });
       }
 
-      // Setup Download / Extract button (HRM Admin & Super Admin only)
+      // Setup Download / Extract button (HRM Admin, HRM_VIEWER & Super Admin)
       const downloadStaffRecordsBtn = document.getElementById('downloadStaffRecordsBtn');
       if (downloadStaffRecordsBtn) {
         downloadStaffRecordsBtn.addEventListener('click', () => {
           downloadStaffRecordsAsCsv();
         });
+      }
+
+      // Get formation filter element from DOM
+      const formationFilterEl = document.getElementById('hrmStaffFormationFilter');
+
+      // Load formations for filter dropdown (HRM admins and SUPER_ADMIN)
+      if ((adminRole === 'SUPER_ADMIN' || isHrmAdminRole(adminRole)) && formationFilterEl) {
+        try {
+          const formRes = await Api.call('listFormations', { key: adminKey });
+          if (formRes && formRes.success && formRes.data && formRes.data.formations) {
+            formRes.data.formations.forEach(f => {
+              const opt = document.createElement('option');
+              opt.value = f.formationId || '';
+              opt.textContent = f.name || f.formationId || '';
+              formationFilterEl.appendChild(opt);
+            });
+          }
+        } catch (err) {
+          console.warn('Could not load formations for filter:', err);
+        }
       }
 
       // Setup search and filter handlers
@@ -6475,6 +7168,7 @@ const AdminPage = (function () {
       if (clearBtn) {
         clearBtn.addEventListener('click', () => {
           if (searchInput) searchInput.value = '';
+          if (formationFilterEl) formationFilterEl.value = '';
           if (loadStaffListFn) loadStaffListFn(1);
         });
       }
@@ -6485,6 +7179,9 @@ const AdminPage = (function () {
       }
       if (includeArchivedCheck) {
         includeArchivedCheck.addEventListener('change', () => { if (loadStaffListFn) loadStaffListFn(1); });
+      }
+      if (formationFilterEl) {
+        formationFilterEl.addEventListener('change', () => { if (loadStaffListFn) loadStaffListFn(1); });
       }
 
       try {
@@ -6531,11 +7228,22 @@ const AdminPage = (function () {
     } else if (view === 'admins') {
       container.innerHTML = `
         <section class="card">
-          <h2>HRM Admins</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h2>HRM Admins</h2>
+            ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
+            <button class="btn btn-primary" id="createHrmAdminBtn" style="background: var(--nysc-green);">
+              <span>➕ Create HRM Admin</span>
+            </button>
+            ` : ''}
+          </div>
           <div id="hrmAdminsTable" class="table-wrapper"></div>
         </section>
       `;
-      if (adminRole === 'SUPER_ADMIN') {
+      if (adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) {
+        const createBtn = document.getElementById('createHrmAdminBtn');
+        if (createBtn) {
+          createBtn.addEventListener('click', () => showCreateHrmAdminModal());
+        }
         await loadHrmAdminsTable();
       }
     } else if (view === 'audit') {
@@ -6547,6 +7255,21 @@ const AdminPage = (function () {
         </section>
       `;
       await loadHrmAuditLogs(1);
+    } else if (view === 'notifications') {
+      container.innerHTML = `
+        <section class="card card-full-width">
+          <h2>HRM Notifications</h2>
+          <div class="contextual-actions" style="margin-bottom: 1rem;">
+            <button class="btn btn-secondary" id="refreshNotificationsBtn">Refresh</button>
+          </div>
+          <div id="hrmNotificationsList">Loading notifications...</div>
+        </section>
+      `;
+      const refreshBtn = document.getElementById('refreshNotificationsBtn');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => loadHrmNotifications());
+      }
+      await loadHrmNotifications();
     } else {
       container.innerHTML = `<div class="info info-muted">Loading HRM ${view}...</div>`;
     }
@@ -6770,6 +7493,9 @@ const AdminPage = (function () {
     loadStaffList,
     loadStaffListPage,
     viewStaffProfile,
+    loadHrmNotifications,
+    approveHrmRequest,
+    rejectHrmRequest,
     editStaff,
     archiveStaffConfirm,
     unarchiveStaff,
