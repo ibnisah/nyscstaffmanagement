@@ -254,6 +254,17 @@
             background: rgba(255, 255, 255, 0.2) !important;
         }
 
+        /* Admin role badge - displays logged-in admin type, white like other navbar items */
+        .admin-role-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.75rem;
+            margin-right: 0.5rem;
+            color: var(--white, #fff);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
         .workspace-content {
             display: none;
         }
@@ -430,6 +441,7 @@
                 <a href="admin.html" class="nav-link active">Admin Dashboard</a>
                 <a href="verify.html" class="nav-link">Attendance</a>
                 <a href="visitor.html" class="nav-link">Visitor Sign-In</a>
+                <span id="adminRoleBadge" class="admin-role-badge" style="display: none;"></span>
                 <button id="adminLogoutBtn" class="nav-link logout-btn" style="display: none;">Logout</button>
             </div>
             <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation">
@@ -506,7 +518,6 @@
                 <a href="#" class="back-to-modules" id="backToModulesBtn">
                     ← Back to Modules
                 </a>
-
                 <!-- Module-specific sidebar content will be injected here -->
                 <div id="sidebarContent"></div>
             </aside>

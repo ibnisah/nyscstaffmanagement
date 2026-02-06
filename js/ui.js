@@ -598,6 +598,21 @@ const AdminPage = (function () {
     safeAddEventListener('hrmIncludeArchivedCheck', 'change', () => loadStaffList(1));
   }
 
+  function getAdminRoleDisplayName(role) {
+    if (!role) return 'Unknown';
+    const names = {
+      SUPER_ADMIN: 'Super Admin',
+      FORMATION_ADMIN: 'Formation Admin',
+      DEPARTMENT_ADMIN: 'Department Admin',
+      HRM_ADMIN: 'HRM Admin (Level 1)',
+      HRM_ADMIN_1: 'HRM Admin (Level 1)',
+      HRM_ADMIN_2: 'HRM Admin (Level 2)',
+      HRM_ADMIN_3: 'HRM Admin (Level 3)',
+      HRM_VIEWER: 'HRM Viewer'
+    };
+    return names[role] || role;
+  }
+
   function handleLogout() {
     // Clear admin session
     adminToken = null;
@@ -608,10 +623,15 @@ const AdminPage = (function () {
     currentFormationId = null;
     currentModule = null;
 
-    // Hide logout button
+    // Hide logout button and admin role badge
     const logoutBtn = document.getElementById('adminLogoutBtn');
     if (logoutBtn) {
       logoutBtn.style.display = 'none';
+    }
+    const adminRoleBadge = document.getElementById('adminRoleBadge');
+    if (adminRoleBadge) {
+      adminRoleBadge.style.display = 'none';
+      adminRoleBadge.textContent = '';
     }
 
     // Hide admin layout and module selector
@@ -662,10 +682,15 @@ const AdminPage = (function () {
       adminDepartmentId = res.data.departmentId;
       currentFormationId = adminFormationId;
 
-      // Show logout button
+      // Show logout button and admin role badge (navbar + sidebar)
       const logoutBtn = document.getElementById('adminLogoutBtn');
       if (logoutBtn) {
         logoutBtn.style.display = 'block';
+      }
+      const adminRoleBadge = document.getElementById('adminRoleBadge');
+      if (adminRoleBadge) {
+        adminRoleBadge.style.display = 'inline-flex';
+        adminRoleBadge.textContent = getAdminRoleDisplayName(adminRole);
       }
 
       await updateAdminContextUI();
@@ -4230,10 +4255,10 @@ const AdminPage = (function () {
           <td>${departmentName}</td>
           <td><span class="badge ${s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${s.status || 'ACTIVE'}</span></td>
           <td style="white-space: nowrap;">
-            <button class="btn btn-xs btn-primary" onclick="AdminPage.showFullStaffProfile('${s.employeeId}')" title="View full profile">View</button>
+            <button class="btn btn-xs btn-primary staff-btn-view" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="View full profile">View</button>
             ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
-            <button class="btn btn-xs btn-secondary" onclick="AdminPage.editStaff('${s.employeeId}')" title="Edit staff record">Edit</button>
-            ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" onclick="AdminPage.archiveStaffConfirm('${s.employeeId}')" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success" onclick="AdminPage.unarchiveStaff('${s.employeeId}')" title="Restore archived record">Restore</button>`}
+            <button class="btn btn-xs btn-secondary staff-btn-edit" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="Edit staff record">Edit</button>
+            ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger staff-btn-archive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success staff-btn-unarchive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="Restore archived record">Restore</button>`}
             ` : ''}
           </td>
         </tr>`;
@@ -4241,6 +4266,27 @@ const AdminPage = (function () {
 
       html += '</tbody></table>';
       container.innerHTML = html;
+
+      // Event delegation for staff table buttons (avoids onclick escaping issues)
+      if (container._staffTableHandler) {
+        container.removeEventListener('click', container._staffTableHandler);
+      }
+      container._staffTableHandler = function(e) {
+        const btn = e.target.closest('.staff-btn-view, .staff-btn-edit, .staff-btn-archive, .staff-btn-unarchive');
+        if (!btn || !btn.dataset.employeeId) return;
+        const empId = btn.dataset.employeeId;
+        const formId = btn.dataset.formationId || '';
+        if (btn.classList.contains('staff-btn-view')) {
+          AdminPage.showFullStaffProfile(empId, formId);
+        } else if (btn.classList.contains('staff-btn-edit')) {
+          AdminPage.editStaff(empId, formId);
+        } else if (btn.classList.contains('staff-btn-archive')) {
+          AdminPage.archiveStaffConfirm(empId);
+        } else if (btn.classList.contains('staff-btn-unarchive')) {
+          AdminPage.unarchiveStaff(empId, formId);
+        }
+      };
+      container.addEventListener('click', container._staffTableHandler);
 
       const paginationEl = document.getElementById('hrmStaffPagination');
       if (paginationEl && pagination.totalPages > 1) {
@@ -4372,16 +4418,14 @@ const AdminPage = (function () {
     }
   }
 
-  async function viewStaffProfile(employeeId) {
+  async function viewStaffProfile(employeeId, formationId) {
     if (!adminKey) return;
 
     try {
       UI.showLoading('Loading', 'Fetching staff profile...');
-      const res = await Api.call('getStaffById', {
-        key: adminKey,
-        employeeId: employeeId
-        // formationId is optional - backend will find the record
-      });
+      const body = { key: adminKey, employeeId: employeeId };
+      if (formationId) body.formationId = formationId;
+      const res = await Api.call('getStaffById', body);
 
       if (!res || !res.success || !res.data || !res.data.staff) {
         UI.closeLoading();
@@ -4532,7 +4576,7 @@ const AdminPage = (function () {
           if (viewFullBtn) {
             viewFullBtn.addEventListener('click', () => {
               Swal.close();
-              showFullStaffProfile(employeeId);
+              showFullStaffProfile(employeeId, staff.formationId || '');
             });
           }
         }
@@ -4614,15 +4658,14 @@ const AdminPage = (function () {
     };
   }
 
-  async function showFullStaffProfile(employeeId) {
+  async function showFullStaffProfile(employeeId, formationId) {
     if (!adminKey) return;
 
     try {
       UI.showLoading('Loading', 'Fetching staff profile...');
-      const res = await Api.call('getStaffProfile', {
-        key: adminKey,
-        employeeId: employeeId
-      });
+      const body = { key: adminKey, employeeId: employeeId };
+      if (formationId) body.formationId = formationId;
+      const res = await Api.call('getStaffProfile', body);
 
       if (!res || !res.success || !res.data || !res.data.staff) {
         UI.closeLoading();
@@ -4930,9 +4973,13 @@ const AdminPage = (function () {
           if (archiveBtn) {
             archiveBtn.addEventListener('click', async () => {
               Swal.close();
-              await archiveStaffConfirm(employeeId);
-              // Reload profile after archiving
-              await showFullStaffProfile(employeeId);
+              if (staff.status === 'ARCHIVED') {
+                await unarchiveStaff(employeeId, staff.formationId || '');
+              } else {
+                await archiveStaffConfirm(employeeId);
+              }
+              // Reload profile after archive/restore
+              await showFullStaffProfile(employeeId, staff.formationId || '');
             });
           }
 
@@ -4941,7 +4988,7 @@ const AdminPage = (function () {
               Swal.close();
               await uploadEmployeeDocument(employeeId, staff.formationId || currentFormationId || '', staff.subUnitId || '');
               // Reload profile after upload
-              await showFullStaffProfile(employeeId);
+              await showFullStaffProfile(employeeId, staff.formationId || '');
             });
           }
 
@@ -5235,16 +5282,14 @@ const AdminPage = (function () {
     }
   }
 
-  async function editStaff(employeeId) {
+  async function editStaff(employeeId, formationId) {
     if (!adminKey) return;
 
     try {
       UI.showLoading('Loading', 'Fetching staff record...');
-      const res = await Api.call('getStaffById', {
-        key: adminKey,
-        employeeId: employeeId
-        // formationId is optional
-      });
+      const body = { key: adminKey, employeeId: employeeId };
+      if (formationId) body.formationId = formationId;
+      const res = await Api.call('getStaffById', body);
 
       if (!res || !res.success || !res.data || !res.data.staff) {
         UI.closeLoading();
@@ -5674,7 +5719,7 @@ const AdminPage = (function () {
                   try {
                     Swal.close();
                     UI.showLoading('Updating', 'Saving staff record...');
-                    const updateRes = await Api.call('updateStaff', {
+                    const updatePayload = {
                       key: adminKey,
                       staff: {
                         employeeId: employeeId,
@@ -5717,7 +5762,9 @@ const AdminPage = (function () {
                         nextOfKinAddress: nextOfKinAddress || '',
                         status
                       }
-                    });
+                    };
+                    if (formationId) updatePayload.formationId = formationId;
+                    const updateRes = await Api.call('updateStaff', updatePayload);
 
                     if (updateRes && updateRes.success) {
                       if (profilePhotoPayload) {
@@ -5914,8 +5961,9 @@ const AdminPage = (function () {
 
   /**
    * Restore an archived staff record (set status to ACTIVE). Uses updateStaff.
+   * Pass formationId when available so the correct record is restored when multiple exist.
    */
-  async function unarchiveStaff(employeeId) {
+  async function unarchiveStaff(employeeId, formationId) {
     if (!adminKey) return;
 
     const confirmed = await UI.confirmAction(
@@ -5928,11 +5976,13 @@ const AdminPage = (function () {
     if (!confirmed) return;
 
     try {
-      const res = await Api.call('updateStaff', {
+      const body = {
         key: adminKey,
         employeeId: employeeId,
         staff: { status: 'ACTIVE' }
-      });
+      };
+      if (formationId) body.formationId = formationId;
+      const res = await Api.call('updateStaff', body);
 
       if (res && res.success) {
         await UI.showSuccess('Success', 'Staff record restored successfully!');
