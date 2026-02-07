@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Field Staff Registration - NYSC</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    .page-field-capture { max-width: 720px; margin: 0 auto; padding: 1.5rem; }
+    .step { display: none; }
+    .step.active { display: block; }
+    .field-capture-form .field { margin-bottom: 1rem; }
+    .field-capture-form label { display: block; font-weight: 600; margin-bottom: 0.35rem; color: #333; }
+    .field-capture-form input, .field-capture-form select, .field-capture-form textarea {
+      width: 100%; padding: 0.6rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem;
+    }
+    .field-capture-form .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .field-capture-form .row2 { grid-template-columns: 1fr; } }
+    .btn-block { width: 100%; padding: 0.75rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-brand">
+        <div class="logo-container">
+          <img src="nysclogo.png" alt="NYSC Logo" class="nysc-logo" />
+          <span class="brand-text">Field Staff Registration</span>
+        </div>
+      </div>
+      <div class="navbar-links">
+        <a href="index.html" class="nav-link">Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="page page-field-capture">
+    <div id="stepError" class="step">
+      <section class="card">
+        <h1>Invalid Link</h1>
+        <p id="errorMessage">This registration link is invalid or has expired. Please use the QR code provided at your formation.</p>
+      </section>
+    </div>
+
+    <div id="stepLocation" class="step">
+      <section class="card">
+        <h1>Verifying location</h1>
+        <p>Please allow browser access to your location. You must be at the designated formation site to continue.</p>
+        <div id="locationStatus" class="info info-muted">Requesting location...</div>
+      </section>
+    </div>
+
+    <div id="stepPhone" class="step">
+      <section class="card">
+        <h1>Verify your phone number</h1>
+        <p>Enter the phone number you were invited with.</p>
+        <form id="phoneForm" class="field-capture-form">
+          <div class="field">
+            <label for="phone">Phone number *</label>
+            <input type="tel" id="phone" name="phone" required placeholder="e.g. 08012345678" />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Continue</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="stepForm" class="step">
+      <section class="card">
+        <h1>Complete your registration</h1>
+        <p>Fill in your details. Only Surname is required. Department can be added later when you are posted.</p>
+        <form id="staffForm" class="field-capture-form">
+          <h2 style="margin-top: 0; color: var(--nysc-green);">Basic information</h2>
+          <div class="row2">
+            <div class="field">
+              <label for="fcSurname">Surname *</label>
+              <input type="text" id="fcSurname" required />
+            </div>
+            <div class="field">
+              <label for="fcOtherNames">Other names</label>
+              <input type="text" id="fcOtherNames" />
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcEmail">Email</label>
+              <input type="email" id="fcEmail" />
+            </div>
+            <div class="field">
+              <label for="fcTelephone">Telephone</label>
+              <input type="tel" id="fcTelephone" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcSubUnit">Department / Sub-unit (optional – add when posted)</label>
+            <select id="fcSubUnit">
+              <option value="">-- None yet / Add later --</option>
+            </select>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcFileNumber">File number</label>
+              <input type="text" id="fcFileNumber" />
+            </div>
+            <div class="field">
+              <label for="fcIppis">IPPIS number</label>
+              <input type="text" id="fcIppis" />
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcDob">Date of birth</label>
+              <input type="date" id="fcDob" />
+            </div>
+            <div class="field">
+              <label for="fcGender">Gender</label>
+              <select id="fcGender">
+                <option value="">-- Select --</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcFirstAppointment">Date of first appointment</label>
+              <input type="date" id="fcFirstAppointment" />
+            </div>
+            <div class="field">
+              <label for="fcPresentAppointment">Date of present appointment</label>
+              <input type="date" id="fcPresentAppointment" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcConfirmationDate">Confirmation date</label>
+            <input type="date" id="fcConfirmationDate" />
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcCadre">Cadre</label>
+              <input type="text" id="fcCadre" />
+            </div>
+            <div class="field">
+              <label for="fcRank">Rank</label>
+              <input type="text" id="fcRank" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcGradeLevel">Grade level</label>
+            <select id="fcGradeLevel">
+              <option value="">-- Select --</option>
+            </select>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcStateOfOrigin">State of origin</label>
+              <select id="fcStateOfOrigin">
+                <option value="">-- Select state --</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fcLga">LGA</label>
+              <input type="text" id="fcLga" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcQualification">Qualification</label>
+            <input type="text" id="fcQualification" />
+          </div>
+          <div class="field">
+            <label for="fcTertiaryInstitution">Tertiary institution</label>
+            <input type="text" id="fcTertiaryInstitution" />
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcTertiaryFrom">Tertiary from (year)</label>
+              <input type="number" id="fcTertiaryFrom" min="1950" max="2100" placeholder="e.g. 2010" />
+            </div>
+            <div class="field">
+              <label for="fcTertiaryTo">Tertiary to (year)</label>
+              <input type="number" id="fcTertiaryTo" min="1950" max="2100" placeholder="e.g. 2014" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcSecondarySchool">Secondary school</label>
+            <input type="text" id="fcSecondarySchool" />
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcSecondaryFrom">Secondary from (year)</label>
+              <input type="number" id="fcSecondaryFrom" min="1950" max="2100" />
+            </div>
+            <div class="field">
+              <label for="fcSecondaryTo">Secondary to (year)</label>
+              <input type="number" id="fcSecondaryTo" min="1950" max="2100" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcPrimarySchool">Primary school</label>
+            <input type="text" id="fcPrimarySchool" />
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcPfa">PFA</label>
+              <input type="text" id="fcPfa" />
+            </div>
+            <div class="field">
+              <label for="fcPfaPin">PFA PIN</label>
+              <input type="text" id="fcPfaPin" />
+            </div>
+          </div>
+
+          <h2 style="margin-top: 1.5rem; color: var(--nysc-green);">Personal information</h2>
+          <div class="row2">
+            <div class="field">
+              <label for="fcMaritalStatus">Marital status</label>
+              <select id="fcMaritalStatus">
+                <option value="">-- Select --</option>
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fcSpouseName">Spouse name</label>
+              <input type="text" id="fcSpouseName" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcNextOfKin">Next of kin</label>
+            <input type="text" id="fcNextOfKin" />
+          </div>
+          <div class="field">
+            <label for="fcPermanentAddress">Permanent home address</label>
+            <textarea id="fcPermanentAddress" rows="2"></textarea>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label for="fcPresentState">Present residential state</label>
+              <select id="fcPresentState">
+                <option value="">-- Select state --</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="fcPresentCity">Present residential city</label>
+              <input type="text" id="fcPresentCity" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="fcPresentAddress">Present residential address</label>
+            <textarea id="fcPresentAddress" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label for="fcStateSecretariat">State secretariat (appointment letter)</label>
+            <select id="fcStateSecretariat">
+              <option value="">-- Select --</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Profile picture (optional, max 2MB)</label>
+            <input type="file" id="fcProfilePhoto" accept="image/jpeg,image/png,image/webp,image/jpg" />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">Submit registration</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="stepSuccess" class="step">
+      <section class="card">
+        <h1>Registration complete</h1>
+        <p id="successMessage">Your staff record has been created successfully. You may close this page.</p>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/nigeria-data.js"></script>
+  <script src="js/geo.js"></script>
+  <script src="js/api.js"></script>
+  <script>
+(function () {
+  var formationId = '';
+  var token = '';
+  var sessionToken = '';
+  var formationName = '';
+
+  function parseUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    formationId = (params.get('formationId') || '').trim();
+    token = (params.get('token') || '').trim();
+    return formationId && token;
+  }
+
+  function showStep(id) {
+    document.querySelectorAll('.step').forEach(function (el) {
+      el.classList.remove('active');
+    });
+    var el = document.getElementById(id);
+    if (el) el.classList.add('active');
+  }
+
+  function setError(msg) {
+    var el = document.getElementById('errorMessage');
+    if (el) el.textContent = msg || 'Invalid link.';
+    showStep('stepError');
+  }
+
+  function fillGradeLevels() {
+    var sel = document.getElementById('fcGradeLevel');
+    if (!sel || !window.NIGERIA_GRADE_LEVELS) return;
+    window.NIGERIA_GRADE_LEVELS.forEach(function (g) {
+      var opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = 'Grade Level ' + g;
+      sel.appendChild(opt);
+    });
+  }
+
+  function fillStates(selectId) {
+    var sel = document.getElementById(selectId);
+    if (!sel || !window.NIGERIA_STATES) return;
+    window.NIGERIA_STATES.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    });
+  }
+
+  function fillStateSecretariats() {
+    var sel = document.getElementById('fcStateSecretariat');
+    if (!sel || !window.NIGERIA_STATE_SECRETARIATS) return;
+    window.NIGERIA_STATE_SECRETARIATS.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    });
+  }
+
+  function resizeAndCompressProfilePhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var max = 400;
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        if (w > max || h > max) {
+          var r = Math.min(max / w, max / h);
+          w = Math.round(w * r);
+          h = Math.round(h * r);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) {
+          if (!blob) {
+            reject(new Error('Failed to create image blob'));
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function () {
+            resolve({
+              base64: reader.result,
+              fileName: (file.name ? file.name.replace(/\.[^.]+$/, '') : 'profile') + '.jpg',
+              mimeType: 'image/jpeg',
+              fileSize: blob.size
+            });
+          };
+          reader.onerror = function () { reject(new Error('Failed to read blob')); };
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.8);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
+      };
+      img.src = url;
+    });
+  }
+
+  function doLocationStep() {
+    showStep('stepLocation');
+    var statusEl = document.getElementById('locationStatus');
+    function fail(msg) {
+      statusEl.textContent = msg || 'Location could not be verified.';
+      statusEl.className = 'info info-warning';
+      setError(msg || 'You must be at the designated formation site to register.');
+    }
+    Geo.getLocation({ requiredAccuracyMeters: 100 }).then(function (loc) {
+      statusEl.textContent = 'Verifying with server...';
+      Api.call('verifyFieldCaptureLocation', {
+        formationId: formationId,
+        token: token,
+        latitude: loc.lat,
+        longitude: loc.lng,
+        accuracy: loc.accuracy
+      }).then(function (res) {
+        if (res && res.success) {
+          statusEl.textContent = 'Location verified.';
+          statusEl.className = 'info';
+          showStep('stepPhone');
+        } else {
+          fail(res && res.message ? res.message : 'Location not allowed.');
+        }
+      }).catch(function (err) {
+        var msg = (err && err.message) ? err.message : 'Verification failed.';
+        if (err && err.reason === 'LOCATION_OUTSIDE') {
+          msg = 'You are outside the allowed area. Please be at the designated formation site.';
+        } else if (err && err.reason === 'EXPIRED_TOKEN' || err && err.reason === 'INVALID_TOKEN') {
+          msg = 'This link is invalid or has expired.';
+        }
+        fail(msg);
+      });
+    }).catch(function (err) {
+      var msg = (err && err.message) ? err.message : 'Location access denied or unavailable.';
+      if (err && err.code === 'DENIED') {
+        msg = 'Location permission was denied. Please allow location access and try again.';
+      }
+      fail(msg);
+    });
+  }
+
+  document.getElementById('phoneForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var phone = (document.getElementById('phone').value || '').trim();
+    if (!phone) return;
+    Api.call('verifyInvitedPhoneNumber', { phone: phone, formationId: formationId })
+      .then(function (res) {
+        if (res && res.success && res.data && res.data.sessionToken) {
+          sessionToken = res.data.sessionToken;
+          showStep('stepForm');
+          Api.call('getFieldCaptureDepartments', { sessionToken: sessionToken, formationId: formationId })
+            .then(function (dRes) {
+              var depts = (dRes && dRes.data && dRes.data.departments) ? dRes.data.departments : [];
+              var sel = document.getElementById('fcSubUnit');
+              sel.innerHTML = '<option value="">-- None yet / Add later --</option>';
+              depts.forEach(function (d) {
+                var opt = document.createElement('option');
+                opt.value = d.departmentId || d.subUnitId || '';
+                opt.textContent = d.name || d.departmentId || d.subUnitId || '';
+                sel.appendChild(opt);
+              });
+            })
+            .catch(function () {});
+          fillGradeLevels();
+          fillStates('fcStateOfOrigin');
+          fillStates('fcPresentState');
+          fillStateSecretariats();
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Cannot continue',
+            text: (res && res.message) ? res.message : 'This phone number is not in the invite list for this formation.'
+          });
+        }
+      })
+      .catch(function (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: (err && err.message) ? err.message : 'Verification failed. Please try again.'
+        });
+      });
+  });
+
+  document.getElementById('staffForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var subUnitId = (document.getElementById('fcSubUnit').value || '').trim();
+    var staff = {
+      formationId: formationId,
+      subUnitId: subUnitId,
+      surname: (document.getElementById('fcSurname').value || '').trim(),
+      otherNames: (document.getElementById('fcOtherNames').value || '').trim(),
+      email: (document.getElementById('fcEmail').value || '').trim(),
+      telephone: (document.getElementById('fcTelephone').value || '').trim(),
+      fileNumber: (document.getElementById('fcFileNumber').value || '').trim(),
+      ippisNumber: (document.getElementById('fcIppis').value || '').trim(),
+      dob: (document.getElementById('fcDob').value || '').trim(),
+      gender: (document.getElementById('fcGender').value || '').trim(),
+      dateOfFirstAppointment: (document.getElementById('fcFirstAppointment').value || '').trim(),
+      dateOfPresentAppointment: (document.getElementById('fcPresentAppointment').value || '').trim(),
+      confirmationDate: (document.getElementById('fcConfirmationDate').value || '').trim(),
+      cadre: (document.getElementById('fcCadre').value || '').trim(),
+      rank: (document.getElementById('fcRank').value || '').trim(),
+      gradeLevel: (document.getElementById('fcGradeLevel').value || '').trim(),
+      stateOfOrigin: (document.getElementById('fcStateOfOrigin').value || '').trim(),
+      lga: (document.getElementById('fcLga').value || '').trim(),
+      qualification: (document.getElementById('fcQualification').value || '').trim(),
+      tertiaryInstitution: (document.getElementById('fcTertiaryInstitution').value || '').trim(),
+      tertiaryFromYear: (document.getElementById('fcTertiaryFrom').value || '').trim(),
+      tertiaryToYear: (document.getElementById('fcTertiaryTo').value || '').trim(),
+      secondarySchool: (document.getElementById('fcSecondarySchool').value || '').trim(),
+      secondaryFromYear: (document.getElementById('fcSecondaryFrom').value || '').trim(),
+      secondaryToYear: (document.getElementById('fcSecondaryTo').value || '').trim(),
+      primarySchool: (document.getElementById('fcPrimarySchool').value || '').trim(),
+      pfa: (document.getElementById('fcPfa').value || '').trim(),
+      pfaPinNo: (document.getElementById('fcPfaPin').value || '').trim(),
+      maritalStatus: (document.getElementById('fcMaritalStatus').value || '').trim(),
+      spouseName: (document.getElementById('fcSpouseName').value || '').trim(),
+      nextOfKin: (document.getElementById('fcNextOfKin').value || '').trim(),
+      permanentHomeAddress: (document.getElementById('fcPermanentAddress').value || '').trim(),
+      presentResidentialState: (document.getElementById('fcPresentState').value || '').trim(),
+      presentResidentialCity: (document.getElementById('fcPresentCity').value || '').trim(),
+      presentResidentialAddress: (document.getElementById('fcPresentAddress').value || '').trim(),
+      stateSecretariatAppointmentLetter: (document.getElementById('fcStateSecretariat').value || '').trim()
+    };
+    if (!staff.surname) {
+      Swal.fire({ icon: 'warning', title: 'Required', text: 'Surname is required.' });
+      return;
+    }
+    Swal.fire({ title: 'Submitting...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+    Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: staff })
+      .then(function (res) {
+        if (!res || !res.success || !res.data) {
+          Swal.fire({ icon: 'error', title: 'Error', text: (res && res.message) ? res.message : 'Registration failed.' });
+          return;
+        }
+        var employeeId = res.data.employeeId;
+        var profileUploadToken = res.data.profileUploadToken;
+        var photoInput = document.getElementById('fcProfilePhoto');
+        if (profileUploadToken && photoInput && photoInput.files && photoInput.files[0]) {
+          var file = photoInput.files[0];
+          if (file.size > 2 * 1024 * 1024) {
+            Swal.fire({ icon: 'warning', title: 'Photo skipped', text: 'Profile picture must be 2MB or less. Record was saved.' });
+            showSuccess(employeeId);
+            return;
+          }
+          resizeAndCompressProfilePhoto(file).then(function (pic) {
+            return Api.call('uploadStaffProfilePictureFieldCapture', {
+              profileUploadToken: profileUploadToken,
+              employeeId: employeeId,
+              formationId: formationId,
+              subUnitId: res.data.subUnitId || staff.subUnitId,
+              fileData: pic.base64,
+              fileName: pic.fileName,
+              mimeType: pic.mimeType,
+              fileSize: pic.fileSize
+            });
+          }).then(function () {
+            showSuccess(employeeId);
+          }).catch(function () {
+            showSuccess(employeeId);
+          });
+        } else {
+          showSuccess(employeeId);
+        }
+      })
+      .catch(function (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Registration failed',
+          text: (err && err.message) ? err.message : 'Could not create staff record. Please try again.'
+        });
+      });
+  });
+
+  function showSuccess(employeeId) {
+    Swal.close();
+    document.getElementById('successMessage').textContent =
+      'Your staff record has been created successfully.' + (employeeId ? ' Employee ID: ' + employeeId + '.' : '') + ' You may close this page.';
+    showStep('stepSuccess');
+  }
+
+  window.addEventListener('DOMContentLoaded', function () {
+    if (!parseUrlParams()) {
+      setError('Missing formation or token. Please use the QR code provided at your formation.');
+      return;
+    }
+    doLocationStep();
+  });
+})();
+  </script>
+</body>
+</html>

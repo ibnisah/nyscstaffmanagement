@@ -6919,6 +6919,10 @@ const AdminPage = (function () {
         <span class="action-btn-icon">🔄</span>
         <span>Transfers</span>
       </button>
+      <button class="action-btn" data-view="fieldcapture">
+        <span class="action-btn-icon">📱</span>
+        <span>Field Capture</span>
+      </button>
     `;
 
     // Add admin actions for SUPER_ADMIN and HRM_ADMIN_1
@@ -7289,6 +7293,340 @@ const AdminPage = (function () {
         if (tableEl) tableEl.textContent = (err && err.message) ? err.message : 'Failed to load staff records.';
         console.error('loadStaffList error:', err);
       }
+    } else if (view === 'fieldcapture') {
+      container.innerHTML = `
+        <section class="card card-full-width">
+          <h2>Field Capture Management</h2>
+          <p class="info info-muted">Invite staff to self-register at formation sites via QR code. Add invites below or bulk upload a CSV, then generate a QR link.</p>
+          <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1rem 0;">
+            <div class="stat-card">
+              <div class="stat-value" id="fcStatsPending">-</div>
+              <div class="stat-label">Pending Invites</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="fcStatsRegistered">-</div>
+              <div class="stat-label">Registered</div>
+            </div>
+          </div>
+          <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Formation</label>
+            <select id="fcFormationSelect" class="swal2-select" style="width: 100%; max-width: 320px; padding: 0.5rem;">
+              <option value="">-- Select Formation --</option>
+            </select>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; align-items: center;">
+            <button class="btn btn-primary" id="fcAddInviteBtn" style="background: var(--nysc-green);">➕ Add invite</button>
+            <button class="btn btn-secondary" id="fcBulkUploadBtn">📤 Bulk upload CSV</button>
+            <a id="fcDownloadTemplate" href="#" download="field-capture-invites-template.csv" class="btn btn-secondary" style="text-decoration: none;">📥 Download CSV template</a>
+            <button class="btn btn-primary" id="fcGenerateLinkBtn" style="background: var(--nysc-green);">Generate QR link</button>
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <span>Expiry (hours):</span>
+              <input type="number" id="fcExpiryHours" min="1" max="168" value="24" style="width: 60px; padding: 0.35rem;">
+            </label>
+          </div>
+          <input type="file" id="fcBulkFileInput" accept=".csv,text/csv" style="display: none;">
+          <div id="fcGeneratedLink" class="info" style="display: none; word-break: break-all; padding: 0.75rem; background: #f0fdf4; border-radius: 6px;"></div>
+          <h3 style="margin-top: 1.5rem;">Invited candidates</h3>
+          <div id="fcCandidatesTable" class="table-wrapper">Loading...</div>
+        </section>
+      `;
+      const formationSelect = document.getElementById('fcFormationSelect');
+      const generateBtn = document.getElementById('fcGenerateLinkBtn');
+      const expiryInput = document.getElementById('fcExpiryHours');
+      const linkDiv = document.getElementById('fcGeneratedLink');
+      const candidatesTable = document.getElementById('fcCandidatesTable');
+
+      async function loadFieldCaptureFormations() {
+        if (!formationSelect) return;
+        try {
+          const res = await Api.call('listFormations', { key: adminKey });
+          if (res && res.success && res.data && res.data.formations) {
+            formationSelect.innerHTML = '<option value="">-- Select Formation --</option>';
+            res.data.formations.filter(f => f.active !== false).forEach(f => {
+              const opt = document.createElement('option');
+              opt.value = f.formationId || '';
+              opt.textContent = f.name || f.formationId || '';
+              formationSelect.appendChild(opt);
+            });
+          }
+        } catch (e) {
+          console.warn('Field capture: could not load formations', e);
+        }
+      }
+
+      async function loadFieldCaptureStats() {
+        try {
+          const res = await Api.call('getFieldCaptureStats', { key: adminKey });
+          if (res && res.success && res.data) {
+            const pendingEl = document.getElementById('fcStatsPending');
+            const registeredEl = document.getElementById('fcStatsRegistered');
+            if (pendingEl) pendingEl.textContent = res.data.totalPending != null ? res.data.totalPending : '-';
+            if (registeredEl) registeredEl.textContent = res.data.totalRegistered != null ? res.data.totalRegistered : '-';
+          }
+        } catch (e) {
+          console.warn('Field capture: could not load stats', e);
+        }
+      }
+
+      async function loadFieldCaptureCandidates() {
+        if (!candidatesTable) return;
+        try {
+          const formationId = formationSelect && formationSelect.value ? formationSelect.value : '';
+          const res = await Api.call('listInvitedCandidates', { key: adminKey, formationId: formationId || undefined });
+          if (res && res.success && res.data && Array.isArray(res.data.candidates)) {
+            const rows = res.data.candidates;
+            if (rows.length === 0) {
+              candidatesTable.innerHTML = '<p class="info info-muted">No invited candidates. Use "Add invite" or "Bulk upload CSV" to add entries.</p>';
+              return;
+            }
+            const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/\r?\n/g, ' ');
+            let html = '<table class="data-table"><thead><tr><th>Phone</th><th>Formation</th><th>Status</th><th>Registered at</th><th>Employee ID</th><th>Notes</th><th>Actions</th></tr></thead><tbody>';
+            rows.forEach(r => {
+              const ph = escapeAttr(r.phone);
+              const fid = escapeAttr(r.formationId);
+              const notesFull = escapeAttr(r.notes || '');
+              html += '<tr data-phone="' + ph + '" data-formation-id="' + fid + '" data-notes="' + notesFull + '">';
+              html += '<td>' + escapeAttr(r.phone) + '</td><td>' + escapeAttr(r.formationId) + '</td><td>' + escapeAttr(r.status) + '</td><td>' + escapeAttr(r.registeredAt) + '</td><td>' + escapeAttr(r.employeeId) + '</td><td>' + escapeAttr((r.notes || '').substring(0, 50)) + (r.notes && r.notes.length > 50 ? '…' : '') + '</td>';
+              html += '<td><button type="button" class="btn btn-xs btn-secondary fc-edit-row" title="Edit">Edit</button> <button type="button" class="btn btn-xs btn-secondary fc-delete-row" style="color: #b91c1c;" title="Permanently delete">Delete</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            candidatesTable.innerHTML = html;
+            candidatesTable.querySelectorAll('.fc-edit-row').forEach(btn => {
+              btn.addEventListener('click', () => {
+                const row = btn.closest('tr');
+                if (!row) return;
+                openFcEditModal(row.dataset.phone, row.dataset.formationId, row);
+              });
+            });
+            candidatesTable.querySelectorAll('.fc-delete-row').forEach(btn => {
+              btn.addEventListener('click', () => {
+                const row = btn.closest('tr');
+                if (!row) return;
+                deleteFcRow(row.dataset.phone, row.dataset.formationId, row);
+              });
+            });
+          } else {
+            candidatesTable.innerHTML = '<p class="info info-muted">Could not load candidates.</p>';
+          }
+        } catch (e) {
+          candidatesTable.innerHTML = '<p class="info info-warning">Failed to load candidates.</p>';
+        }
+      }
+
+      async function openFcEditModal(phone, formationId, rowEl) {
+        const notes = (rowEl && rowEl.dataset.notes !== undefined) ? (rowEl.dataset.notes || '') : ((rowEl && rowEl.cells[5]) ? rowEl.cells[5].textContent : '');
+        const status = (rowEl && rowEl.cells[2]) ? rowEl.cells[2].textContent : 'Pending';
+        const formOpts = formationSelect ? Array.from(formationSelect.options).map(o => ({ value: o.value, text: o.textContent })) : [];
+        const result = await Swal.fire({
+          title: 'Edit invited candidate',
+          html: `
+            <p class="info info-muted" style="margin-bottom: 1rem;">Identifying record: ${(phone || '').replace(/</g, '&lt;')} / ${(formationId || '').replace(/</g, '&lt;')}</p>
+            <label style="display:block; margin-bottom:0.35rem; font-weight:600;">New phone</label>
+            <input id="fcEditPhone" class="swal2-input" value="${(phone || '').replace(/"/g, '&quot;')}" style="width:100%; margin:0 0 0.75rem 0;">
+            <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Formation</label>
+            <select id="fcEditFormationId" class="swal2-select" style="width:100%; margin:0 0 0.75rem 0;">
+              ${formOpts.filter(o => o.value).map(o => '<option value="' + o.value.replace(/"/g, '&quot;') + '"' + (o.value === formationId ? ' selected' : '') + '>' + (o.text || o.value).replace(/</g, '&lt;') + '</option>').join('')}
+            </select>
+            <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Status</label>
+            <select id="fcEditStatus" class="swal2-select" style="width:100%; margin:0 0 0.75rem 0;">
+              <option value="Pending" ${status === 'Pending' || status === 'PENDING' ? 'selected' : ''}>Pending</option>
+              <option value="Registered" ${status === 'Registered' || status === 'REGISTERED' ? 'selected' : ''}>Registered</option>
+            </select>
+            <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Notes</label>
+            <textarea id="fcEditNotes" class="swal2-textarea" style="width:100%; margin:0;" rows="2">${(notes || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+          `,
+          showCancelButton: true,
+          confirmButtonText: 'Update',
+          confirmButtonColor: '#059669',
+          preConfirm: () => ({
+            newPhone: document.getElementById('fcEditPhone').value.trim().replace(/\D/g, ''),
+            newFormationId: document.getElementById('fcEditFormationId').value.trim(),
+            status: document.getElementById('fcEditStatus').value.trim(),
+            notes: document.getElementById('fcEditNotes').value.trim()
+          })
+        });
+        if (!result.isConfirmed || !result.value) return;
+        try {
+          UI.showLoading('Updating', 'Saving...');
+          await Api.call('updateInvitedCandidate', {
+            key: adminKey,
+            phone: phone,
+            formationId: formationId,
+            newPhone: result.value.newPhone || undefined,
+            newFormationId: result.value.newFormationId || undefined,
+            status: result.value.status,
+            notes: result.value.notes
+          });
+          UI.closeLoading();
+          await UI.showSuccess('Updated', 'Invited candidate updated.');
+          await loadFieldCaptureCandidates();
+          await loadFieldCaptureStats();
+        } catch (err) {
+          UI.closeLoading();
+          await UI.showError('Error', err && err.message ? err.message : 'Update failed.');
+        }
+      }
+
+      async function deleteFcRow(phone, formationId, rowEl) {
+        const confirm = await Swal.fire({
+          title: 'Permanently delete?',
+          text: 'This will remove the invited candidate from the list. This action cannot be undone.',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#b91c1c',
+          confirmButtonText: 'Delete permanently'
+        });
+        if (!confirm.isConfirmed) return;
+        try {
+          UI.showLoading('Deleting', '...');
+          await Api.call('deleteInvitedCandidate', { key: adminKey, phone: phone, formationId: formationId });
+          UI.closeLoading();
+          await UI.showSuccess('Deleted', 'Invited candidate removed.');
+          await loadFieldCaptureCandidates();
+          await loadFieldCaptureStats();
+        } catch (err) {
+          UI.closeLoading();
+          await UI.showError('Error', err && err.message ? err.message : 'Delete failed.');
+        }
+      }
+
+      if (formationSelect) {
+        formationSelect.addEventListener('change', () => {
+          loadFieldCaptureCandidates();
+        });
+      }
+
+      const addInviteBtn = document.getElementById('fcAddInviteBtn');
+      if (addInviteBtn) {
+        addInviteBtn.addEventListener('click', async () => {
+          const formOpts = formationSelect ? Array.from(formationSelect.options).filter(o => o.value) : [];
+          const result = await Swal.fire({
+            title: 'Add invited candidate',
+            html: `
+              <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Phone number *</label>
+              <input id="fcAddPhone" class="swal2-input" type="tel" placeholder="e.g. 08012345678" style="width:100%; margin:0 0 0.75rem 0;">
+              <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Formation *</label>
+              <select id="fcAddFormationId" class="swal2-select" style="width:100%; margin:0 0 0.75rem 0;">
+                <option value="">-- Select Formation --</option>
+                ${formOpts.map(o => '<option value="' + o.value.replace(/"/g, '&quot;') + '">' + (o.textContent || o.value).replace(/</g, '&lt;') + '</option>').join('')}
+              </select>
+              <label style="display:block; margin-bottom:0.35rem; font-weight:600;">Notes (optional)</label>
+              <textarea id="fcAddNotes" class="swal2-textarea" placeholder="Optional notes" style="width:100%; margin:0;" rows="2"></textarea>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Add',
+            confirmButtonColor: '#059669',
+            preConfirm: () => {
+              const ph = document.getElementById('fcAddPhone').value.trim();
+              const fid = document.getElementById('fcAddFormationId').value.trim();
+              if (!ph) { Swal.showValidationMessage('Phone is required.'); return false; }
+              if (!fid) { Swal.showValidationMessage('Formation is required.'); return false; }
+              return { phone: ph, formationId: fid, notes: document.getElementById('fcAddNotes').value.trim() };
+            }
+          });
+          if (!result.isConfirmed || !result.value) return;
+          try {
+            UI.showLoading('Adding', '...');
+            await Api.call('addInvitedCandidate', { key: adminKey, phone: result.value.phone, formationId: result.value.formationId, notes: result.value.notes });
+            UI.closeLoading();
+            await UI.showSuccess('Added', 'Invited candidate added.');
+            await loadFieldCaptureCandidates();
+            await loadFieldCaptureStats();
+          } catch (err) {
+            UI.closeLoading();
+            await UI.showError('Error', err && err.message ? err.message : 'Add failed.');
+          }
+        });
+      }
+
+      const bulkUploadBtn = document.getElementById('fcBulkUploadBtn');
+      const bulkFileInput = document.getElementById('fcBulkFileInput');
+      if (bulkUploadBtn && bulkFileInput) {
+        bulkUploadBtn.addEventListener('click', () => bulkFileInput.click());
+        bulkFileInput.addEventListener('change', async (e) => {
+          const file = e.target.files && e.target.files[0];
+          e.target.value = '';
+          if (!file) return;
+          const formationId = formationSelect && formationSelect.value ? formationSelect.value.trim() : '';
+          if (!formationId) {
+            await UI.showError('Select formation', 'Select a formation first. It will be used as default for all rows without a formationId column.');
+            return;
+          }
+          const text = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(new Error('Failed to read file'));
+            r.readAsText(file, 'UTF-8');
+          });
+          try {
+            UI.showLoading('Uploading', 'Processing ' + (text.split(/\r?\n/).length - 1) + ' rows...');
+            const res = await Api.call('addInvitedCandidatesBulk', { key: adminKey, formationId: formationId, csv: text });
+            UI.closeLoading();
+            const d = res && res.data ? res.data : {};
+            const errMsg = (d.errors && d.errors.length) ? '<br>First errors: ' + d.errors.slice(0, 5).map(x => 'Row ' + x.row + ': ' + x.message).join('; ') : '';
+            await Swal.fire({
+              title: 'Bulk upload complete',
+              html: 'Added: <strong>' + (d.added || 0) + '</strong>, Skipped: <strong>' + (d.skipped || 0) + '</strong>' + (d.errors && d.errors.length ? ', Errors: ' + d.errors.length : '') + errMsg,
+              icon: (d.added || 0) > 0 ? 'success' : 'info'
+            });
+            await loadFieldCaptureCandidates();
+            await loadFieldCaptureStats();
+          } catch (err) {
+            UI.closeLoading();
+            await UI.showError('Error', err && err.message ? err.message : 'Bulk upload failed.');
+          }
+        });
+      }
+
+      const downloadTemplate = document.getElementById('fcDownloadTemplate');
+      if (downloadTemplate) {
+        downloadTemplate.addEventListener('click', (e) => {
+          e.preventDefault();
+          const csv = 'phone,formationId,notes\n08012345678,,Optional note\n08087654321,,';
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'field-capture-invites-template.csv';
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      }
+
+      if (generateBtn) {
+        generateBtn.addEventListener('click', async () => {
+          const formationId = formationSelect && formationSelect.value ? formationSelect.value.trim() : '';
+          if (!formationId) {
+            await UI.showError('Select formation', 'Please select a formation first.');
+            return;
+          }
+          const expiryHours = parseInt(expiryInput && expiryInput.value ? expiryInput.value : 24, 10) || 24;
+          try {
+            UI.showLoading('Generating', 'Generating link...');
+            const baseUrl = window.location.origin + (window.location.pathname ? window.location.pathname.replace(/\/[^/]*$/, '') : '');
+            const res = await Api.call('generateFieldCaptureToken', {
+              key: adminKey,
+              formationId: formationId,
+              expiryHours: expiryHours,
+              baseUrl: baseUrl
+            });
+            UI.closeLoading();
+            if (res && res.success && res.data && res.data.link) {
+              linkDiv.style.display = 'block';
+              linkDiv.innerHTML = '<strong>Registration link (use for QR code):</strong><br><a href="' + res.data.link + '" target="_blank" rel="noopener">' + res.data.link + '</a><br><small>Expires: ' + (res.data.expiresAt || '') + '</small>';
+            } else {
+              await UI.showError('Error', res && res.message ? res.message : 'Could not generate link.');
+            }
+          } catch (err) {
+            UI.closeLoading();
+            await UI.showError('Error', err && err.message ? err.message : 'Could not generate link.');
+          }
+        });
+      }
+
+      await loadFieldCaptureFormations();
+      await loadFieldCaptureStats();
+      await loadFieldCaptureCandidates();
     } else if (view === 'profiles') {
       container.innerHTML = `
         <section class="card">
