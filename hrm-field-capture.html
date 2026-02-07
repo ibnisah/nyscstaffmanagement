@@ -431,12 +431,21 @@
     e.preventDefault();
     var phone = (document.getElementById('phone').value || '').trim();
     if (!phone) return;
+    Swal.fire({
+      title: 'Verifying...',
+      allowOutsideClick: false,
+      didOpen: function () { Swal.showLoading(); }
+    });
     Api.call('verifyInvitedPhoneNumber', { phone: phone, formationId: formationId })
       .then(function (res) {
         if (res && res.success && res.data && res.data.sessionToken) {
           sessionToken = res.data.sessionToken;
-          showStep('stepForm');
-          Api.call('getFieldCaptureDepartments', { sessionToken: sessionToken, formationId: formationId })
+          Swal.fire({
+            title: 'Loading form...',
+            allowOutsideClick: false,
+            didOpen: function () { Swal.showLoading(); }
+          });
+          return Api.call('getFieldCaptureDepartments', { sessionToken: sessionToken, formationId: formationId })
             .then(function (dRes) {
               var depts = (dRes && dRes.data && dRes.data.departments) ? dRes.data.departments : [];
               var sel = document.getElementById('fcSubUnit');
@@ -447,13 +456,18 @@
                 opt.textContent = d.name || d.departmentId || d.subUnitId || '';
                 sel.appendChild(opt);
               });
+              fillGradeLevels();
+              fillStates('fcStateOfOrigin');
+              fillStates('fcPresentState');
+              fillStateSecretariats();
             })
-            .catch(function () {});
-          fillGradeLevels();
-          fillStates('fcStateOfOrigin');
-          fillStates('fcPresentState');
-          fillStateSecretariats();
+            .catch(function () {})
+            .then(function () {
+              Swal.close();
+              showStep('stepForm');
+            });
         } else {
+          Swal.close();
           Swal.fire({
             icon: 'error',
             title: 'Cannot continue',
@@ -462,6 +476,7 @@
         }
       })
       .catch(function (err) {
+        Swal.close();
         Swal.fire({
           icon: 'error',
           title: 'Error',
