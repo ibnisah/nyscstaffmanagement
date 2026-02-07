@@ -398,28 +398,86 @@
             margin-top: 0 !important;
         }
 
-        /* Wide modal styles for Add Staff */
+        /* Wide modal styles for Add Staff - no horizontal overflow */
         .swal2-wide-modal {
             width: 800px !important;
-            max-width: 90vw !important;
+            max-width: min(800px, calc(100vw - 2rem)) !important;
+        }
+
+        /* Form modals (Create Admin, etc.) - slightly narrower, no overflow */
+        .swal2-form-modal {
+            width: 560px !important;
+            max-width: min(560px, calc(100vw - 2rem)) !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
         }
 
         .swal2-html-container-wide {
             padding: 1.5rem !important;
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
         }
 
         .swal2-wide-modal .swal2-input,
-        .swal2-wide-modal .swal2-select {
+        .swal2-wide-modal .swal2-select,
+        .swal2-wide-modal .swal2-textarea {
             width: 100% !important;
+            max-width: 100% !important;
             margin: 0.5rem 0 !important;
             padding: 0.75rem !important;
             font-size: 1rem !important;
+            box-sizing: border-box !important;
         }
 
         .swal2-wide-modal .swal2-input:focus,
         .swal2-wide-modal .swal2-select:focus {
             border-color: var(--nysc-green) !important;
             box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1) !important;
+        }
+
+        /* Prevent horizontal scroll on ALL SweetAlert popups */
+        .swal2-popup {
+            overflow-x: hidden !important;
+            max-width: calc(100vw - 2rem) !important;
+            box-sizing: border-box !important;
+        }
+
+        .swal2-html-container {
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+            word-wrap: break-word !important;
+            box-sizing: border-box !important;
+        }
+
+        /* All SweetAlert selects and inputs - prevent overflow */
+        .swal2-popup .swal2-select,
+        .swal2-popup .swal2-input,
+        .swal2-popup .swal2-textarea,
+        .swal2-popup select,
+        .swal2-popup input {
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+        }
+
+        .swal2-popup select {
+            width: 100% !important;
+        }
+
+        /* Ensure form wrappers/divs don't overflow */
+        .swal2-popup > div,
+        .swal2-html-container > div {
+            min-width: 0 !important;
+            max-width: 100% !important;
+        }
+
+        @media (max-width: 768px) {
+            .swal2-wide-modal,
+            .swal2-form-modal {
+                width: 95vw !important;
+                max-width: 95vw !important;
+            }
         }
     </style>
 </head>

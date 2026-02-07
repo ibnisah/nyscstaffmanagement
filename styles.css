@@ -1021,8 +1021,49 @@ table tr:hover {
     max-width: 95vw !important;
     width: 95vw !important;
     margin: 0.5rem !important;
+    overflow-x: hidden !important;
   }
   .swal2-html-container {
-    max-width: 100%;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
+  .staff-form-grid {
+    min-width: 0 !important; /* Allow grid to shrink below content */
+  }
+}
+
+/* SweetAlert: prevent horizontal overflow globally */
+.swal2-container {
+  overflow-x: hidden !important;
+}
+
+/* All SweetAlert popups - prevent content overflow (selects, inputs, long text) */
+.swal2-popup {
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.swal2-html-container {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.swal2-popup .swal2-select,
+.swal2-popup .swal2-input,
+.swal2-popup .swal2-textarea,
+.swal2-popup select,
+.swal2-popup input {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.swal2-popup select {
+  width: 100% !important;
+}
+
+.swal2-popup .swal2-html-container > div {
+  min-width: 0 !important;
+  max-width: 100% !important;
 }

@@ -59,7 +59,49 @@
     'Zamfara': ['Anka', 'Bakura', 'Birnin Magaji/Kiyaw', 'Bukkuyum', 'Bungudu', 'Chafe', 'Gummi', 'Gusau', 'Kaura Namoda', 'Maradun', 'Maru', 'Shinkafi', 'Talata Mafara', 'Tsafe', 'Zurmi']
   };
 
+  // State Secretariats (for "State Secretariat to Collect Appointment Letter")
+  var NIGERIA_STATE_SECRETARIATS = [
+    'Abia State Secretariat',
+    'Adamawa State Secretariat',
+    'Akwa Ibom State Secretariat',
+    'Anambra State Secretariat',
+    'Bauchi State Secretariat',
+    'Bayelsa State Secretariat',
+    'Benue State Secretariat',
+    'Borno State Secretariat',
+    'Cross River State Secretariat',
+    'Delta State Secretariat',
+    'Ebonyi State Secretariat',
+    'Edo State Secretariat',
+    'Ekiti State Secretariat',
+    'Enugu State Secretariat',
+    'FCT State Secretariat',
+    'Gombe State Secretariat',
+    'Imo State Secretariat',
+    'Jigawa State Secretariat',
+    'Kaduna State Secretariat',
+    'Kano State Secretariat',
+    'Katsina State Secretariat',
+    'Kebbi State Secretariat',
+    'Kogi State Secretariat',
+    'Kwara State Secretariat',
+    'Lagos State Secretariat',
+    'Nasarawa State Secretariat',
+    'Niger State Secretariat',
+    'Ogun State Secretariat',
+    'Ondo State Secretariat',
+    'Osun State Secretariat',
+    'Oyo State Secretariat',
+    'Plateau State Secretariat',
+    'Rivers State Secretariat',
+    'Sokoto State Secretariat',
+    'Taraba State Secretariat',
+    'Yobe State Secretariat',
+    'Zamfara State Secretariat'
+  ];
+
   global.NIGERIA_GRADE_LEVELS = NIGERIA_GRADE_LEVELS;
   global.NIGERIA_STATES = NIGERIA_STATES;
   global.NIGERIA_STATE_LGAS = NIGERIA_STATE_LGAS;
+  global.NIGERIA_STATE_SECRETARIATS = NIGERIA_STATE_SECRETARIATS;
 })(typeof window !== 'undefined' ? window : this);
