@@ -268,6 +268,19 @@
       </section>
     </div>
 
+    <div id="stepDocuments" class="step">
+      <section class="card">
+        <h1>Upload documents (optional)</h1>
+        <p>You can upload relevant documents (JPG/JPEG images, max 2MB each).</p>
+        <div id="fcDocList" style="margin: 1rem 0; min-height: 2rem;"></div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <input type="file" id="fcDocFileInput" accept="image/jpeg,image/jpg,.jpg,.jpeg" style="display: none;" />
+          <button type="button" id="fcDocUploadBtn" class="btn btn-secondary">Add document</button>
+          <button type="button" id="fcDocFinishBtn" class="btn btn-primary">Finish</button>
+        </div>
+      </section>
+    </div>
+
     <div id="stepSuccess" class="step">
       <section class="card">
         <h1>Registration complete</h1>
@@ -539,6 +552,8 @@
         }
         var employeeId = res.data.employeeId;
         var profileUploadToken = res.data.profileUploadToken;
+        var documentUploadToken = res.data.documentUploadToken;
+        var subUnitIdRes = (res.data && res.data.subUnitId) || staff.subUnitId || '';
         var photoInput = document.getElementById('fcProfilePhoto');
         if (profileUploadToken && photoInput && photoInput.files && photoInput.files[0]) {
           var file = photoInput.files[0];
@@ -552,19 +567,33 @@
               profileUploadToken: profileUploadToken,
               employeeId: employeeId,
               formationId: formationId,
-              subUnitId: res.data.subUnitId || staff.subUnitId,
+              subUnitId: (res.data && res.data.subUnitId) || staff.subUnitId || '',
               fileData: pic.base64,
               fileName: pic.fileName,
               mimeType: pic.mimeType,
               fileSize: pic.fileSize
             });
-          }).then(function () {
-            showSuccess(employeeId);
-          }).catch(function () {
-            showSuccess(employeeId);
+          }).then(function (uploadRes) {
+            if (uploadRes && uploadRes.success) {
+              goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+            } else {
+            Swal.fire({
+              icon: 'warning',
+              title: 'Profile picture could not be uploaded',
+              text: (uploadRes && uploadRes.message) ? uploadRes.message : 'Your record was saved. You can add a profile picture later via the admin.'
+            });
+            goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+            }
+          }).catch(function (err) {
+            Swal.fire({
+              icon: 'warning',
+              title: 'Profile picture upload failed',
+              text: (err && err.message) ? err.message : 'Your record was saved. You can add a profile picture later via the admin.'
+            });
+            goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
           });
         } else {
-          showSuccess(employeeId);
+          goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
         }
       })
       .catch(function (err) {
@@ -582,6 +611,91 @@
       'Your staff record has been created successfully.' + (employeeId ? ' Employee ID: ' + employeeId + '.' : '') + ' You may close this page.';
     showStep('stepSuccess');
   }
+
+  var fcDocState = { employeeId: '', documentUploadToken: '', subUnitId: '', uploaded: [] };
+
+  function goToDocumentsStep(employeeId, documentUploadToken, subUnitId) {
+    Swal.close();
+    fcDocState = { employeeId: employeeId || '', documentUploadToken: documentUploadToken || '', subUnitId: subUnitId || '', uploaded: [] };
+    document.getElementById('fcDocList').innerHTML = '<em style="color: #6b7280;">No documents uploaded yet.</em>';
+    showStep('stepDocuments');
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(new Error('Failed to read file')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderDocList() {
+    var el = document.getElementById('fcDocList');
+    if (!el) return;
+    if (fcDocState.uploaded.length === 0) {
+      el.innerHTML = '<em style="color: #6b7280;">No documents uploaded yet.</em>';
+    } else {
+      el.innerHTML = '<ul style="margin: 0; padding-left: 1.25rem;">' +
+        fcDocState.uploaded.map(function (d) { return '<li>' + (d.fileName || 'Document') + '</li>'; }).join('') +
+        '</ul>';
+    }
+  }
+
+  function handleDocUpload(file) {
+    if (!fcDocState.documentUploadToken || !fcDocState.employeeId) return;
+    if (fcDocState.uploaded.length >= 10) {
+      Swal.fire({ icon: 'warning', title: 'Limit reached', text: 'Maximum 10 documents per staff.' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      Swal.fire({ icon: 'warning', title: 'File too large', text: 'Each document must be 2MB or less.' });
+      return;
+    }
+    var mime = (file.type || '').toLowerCase();
+    if (mime !== 'image/jpeg' && mime !== 'image/jpg') {
+      Swal.fire({ icon: 'warning', title: 'Invalid type', text: 'Only JPG/JPEG images are allowed.' });
+      return;
+    }
+    Swal.fire({ title: 'Uploading...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+    fileToBase64(file).then(function (base64) {
+      return Api.call('uploadStaffDocumentFieldCapture', {
+        documentUploadToken: fcDocState.documentUploadToken,
+        employeeId: fcDocState.employeeId,
+        formationId: formationId,
+        subUnitId: fcDocState.subUnitId,
+        fileData: base64,
+        fileName: file.name || 'document.jpg',
+        mimeType: file.type || 'image/jpeg',
+        fileSize: file.size
+      });
+    }).then(function (res) {
+      Swal.close();
+      if (res && res.success) {
+        fcDocState.uploaded.push({ fileName: file.name || 'document.jpg' });
+        renderDocList();
+      } else {
+        Swal.fire({ icon: 'error', title: 'Upload failed', text: (res && res.message) ? res.message : 'Could not upload document.' });
+      }
+    }).catch(function (err) {
+      Swal.close();
+      Swal.fire({ icon: 'error', title: 'Upload failed', text: (err && err.message) ? err.message : 'Could not upload document.' });
+    });
+  }
+
+  document.getElementById('fcDocUploadBtn').addEventListener('click', function () {
+    document.getElementById('fcDocFileInput').click();
+  });
+
+  document.getElementById('fcDocFileInput').addEventListener('change', function (e) {
+    var file = e.target && e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (file) handleDocUpload(file);
+  });
+
+  document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
+    showSuccess(fcDocState.employeeId);
+  });
 
   window.addEventListener('DOMContentLoaded', function () {
     if (!parseUrlParams()) {
