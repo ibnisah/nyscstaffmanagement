@@ -2842,171 +2842,129 @@ const AdminPage = (function () {
       console.warn('Could not fetch current file count:', err);
     }
 
-    // Show upload modal with instructions
-    const uploadConfirm = await Swal.fire({
-      title: 'Upload Staff Document',
+    const slotsLeft = Math.max(0, 10 - currentFileCount);
+    const selectedFiles = [];
+
+    function renderAdminDocList() {
+      const el = document.getElementById('adminDocFileList');
+      if (!el) return;
+      if (selectedFiles.length === 0) {
+        el.innerHTML = '<em style="color: #6b7280;">No documents selected. Click "Add document" to select.</em>';
+      } else {
+        el.innerHTML = '<ul style="margin: 0; padding-left: 1.25rem; max-height: 200px; overflow-y: auto;">' +
+          selectedFiles.map((f, i) => '<li style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">' +
+            '<span>' + (f.name || 'Document') + '</span> (' + (f.size / 1024).toFixed(1) + ' KB)' +
+            '<button type="button" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;" data-remove-index="' + i + '">Remove</button>' +
+            '</li>').join('') + '</ul>';
+      }
+      const uploadBtn = document.getElementById('adminDocUploadAllBtn');
+      if (uploadBtn) uploadBtn.disabled = selectedFiles.length === 0;
+    }
+
+    await Swal.fire({
+      title: 'Upload Staff Documents',
       customClass: { popup: 'swal2-wide-modal swal2-form-modal', htmlContainer: 'swal2-html-container-wide' },
       html: `
         <div style="text-align: left; padding: 1rem 0;">
           <p style="margin-bottom: 1rem; color: #374151;">
-            <strong>Upload Requirements:</strong>
+            <strong>Select documents, then click "Upload All".</strong>
           </p>
           <ul style="margin-left: 1.5rem; margin-bottom: 1rem; line-height: 1.8; color: #6b7280;">
             <li>File type: JPG/JPEG images only</li>
-            <li>Maximum file size: 2MB</li>
-            <li>Maximum files per staff: 10 (Current: ${currentFileCount}/10)</li>
+            <li>Maximum file size: 2MB per file</li>
+            <li>Slots available: ${slotsLeft} (Current: ${currentFileCount}/10)</li>
           </ul>
-          <p style="margin-top: 1rem; padding: 0.75rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; color: #92400e;">
-            <strong>Note:</strong> PDF files and other file types are not allowed.
-          </p>
+          <div id="adminDocFileList" style="margin: 1rem 0; min-height: 2rem; padding: 0.75rem; background: #f9fafb; border-radius: 6px;"></div>
+          <input type="file" id="adminDocFileInput" accept="image/jpeg,image/jpg,.jpg,.jpeg" multiple style="display: none;" />
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem;">
+            <button type="button" id="adminDocAddBtn" class="btn btn-secondary">Add document</button>
+            <button type="button" id="adminDocUploadAllBtn" class="btn btn-primary" disabled>Upload All</button>
+          </div>
         </div>
       `,
       showCancelButton: true,
-      confirmButtonText: 'Select Image',
       cancelButtonText: 'Cancel',
-      confirmButtonColor: '#059669',
-      icon: 'info'
-    });
+      showConfirmButton: false,
+      didOpen: () => {
+        const addBtn = document.getElementById('adminDocAddBtn');
+        const uploadAllBtn = document.getElementById('adminDocUploadAllBtn');
+        const fileInput = document.getElementById('adminDocFileInput');
+        if (!addBtn || !uploadAllBtn || !fileInput) return;
 
-    if (!uploadConfirm.isConfirmed) {
-      return;
-    }
-
-    // Create file input
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/jpg,.jpg,.jpeg'; // Explicitly exclude PDFs
-    input.style.display = 'none';
-    document.body.appendChild(input);
-
-    // Trigger file selection
-    input.click();
-
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) {
-        document.body.removeChild(input);
-        return;
-      }
-
-      // Client-side validation
-      const validation = validateFileUpload(file, currentFileCount);
-      if (!validation.valid) {
-        document.body.removeChild(input);
-        await UI.showError('Upload Rejected', validation.message);
-        return;
-      }
-
-      // Show loading with file name
-      Swal.fire({
-        title: 'Uploading Image...',
-        html: `
-          <div style="text-align: center;">
-            <p style="margin-bottom: 0.5rem; font-weight: 600;">${file.name}</p>
-            <p style="color: #6b7280; font-size: 0.9rem;">${(file.size / 1024).toFixed(2)} KB</p>
-          </div>
-        `,
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        showConfirmButton: false,
-        didOpen: () => {
-          Swal.showLoading();
-        }
-      });
-
-      try {
-        // Convert to base64
-        const base64Data = await fileToBase64(file);
-
-        // Upload to server
-        // formationId and subUnitId are optional - backend will get from staff record if not provided
-        const res = await Api.call('uploadDocumentMetadata', {
-          key: adminKey,
-          employeeId: employeeId,
-          formationId: formationId || '', // Can be empty - backend will get from staff record
-          subUnitId: subUnitId || '', // Can be empty - backend will get from staff record
-          fileName: file.name,
-          mimeType: file.type,
-          fileData: base64Data,
-          fileSize: file.size
+        addBtn.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => {
+          const files = e.target.files;
+          if (!files || files.length === 0) return;
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const validation = validateFileUpload(file, currentFileCount + selectedFiles.length);
+            if (!validation.valid) {
+              UI.showError('Upload Rejected', validation.message);
+              break;
+            }
+            selectedFiles.push(file);
+            if (selectedFiles.length >= slotsLeft) break;
+          }
+          e.target.value = '';
+          renderAdminDocList();
+        };
+        document.getElementById('adminDocFileList').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-remove-index]');
+          if (btn) {
+            const idx = parseInt(btn.getAttribute('data-remove-index'), 10);
+            selectedFiles.splice(idx, 1);
+            renderAdminDocList();
+          }
         });
 
-        if (res && res.success) {
+        uploadAllBtn.onclick = async () => {
+          if (selectedFiles.length === 0) return;
           Swal.close();
-
-          // Show success with "Add More Documents" to upload again (not View Documents)
-          const uploadResult = await Swal.fire({
-            title: 'Upload Successful!',
-            html: `
-              <div style="text-align: center; padding: 1rem 0;">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
-                <p style="font-size: 1.1rem; margin-bottom: 0.5rem; color: #374151;">
-                  <strong>Image "${file.name}"</strong>
-                </p>
-                <p style="color: #6b7280; margin-bottom: 1.5rem;">
-                  has been uploaded successfully!
-                </p>
-              </div>
-            `,
-            showConfirmButton: true,
-            confirmButtonText: 'Add More Documents',
-            confirmButtonColor: '#059669',
-            showCancelButton: true,
-            cancelButtonText: 'Close',
-            icon: 'success',
-            width: '500px'
-          });
-
-          if (uploadResult.isConfirmed) {
-            await uploadEmployeeDocument(employeeId, formationId, subUnitId);
+          let uploaded = 0;
+          let failed = 0;
+          for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            UI.showLoading('Uploading', 'Uploading ' + (i + 1) + '/' + selectedFiles.length + ': ' + file.name + '...');
+            try {
+              const base64Data = await fileToBase64(file);
+              const res = await Api.call('uploadDocumentMetadata', {
+                key: adminKey,
+                employeeId: employeeId,
+                formationId: formationId || '',
+                subUnitId: subUnitId || '',
+                fileName: file.name,
+                mimeType: file.type,
+                fileData: base64Data,
+                fileSize: file.size
+              });
+              if (res && res.success) uploaded++;
+              else failed++;
+            } catch (err) {
+              failed++;
+              console.warn('Upload failed:', file.name, err);
+            }
           }
-        } else {
-          throw new Error(res.message || 'Upload failed');
-        }
-      } catch (err) {
-        // Check if it's a Drive permission error
-        const errorMsg = err.message || '';
-        if (errorMsg.includes('Drive API permissions') ||
-          errorMsg.includes('DRIVE_PERMISSION_REQUIRED') ||
-          errorMsg.includes('DRIVE_UPLOAD_ERROR')) {
-          // Show detailed instructions for Drive permission setup
-          await Swal.fire({
-            icon: 'warning',
-            title: 'Drive Permissions Required',
-            html: `
-              <div style="text-align: left; padding: 1rem 0;">
-                <p style="margin-bottom: 1rem; font-weight: 600; color: #dc2626;">
-                  The system needs Google Drive permissions to upload staff documents.
-                </p>
-                <p style="margin-bottom: 1rem;"><strong>This is a one-time setup that must be done by the system administrator:</strong></p>
-                <ol style="margin-left: 1.5rem; margin-bottom: 1rem; line-height: 2;">
-                  <li>Open <strong>Google Apps Script Editor</strong> (script.google.com)</li>
-                  <li>Select your project</li>
-                  <li>In the function dropdown, select <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">testDrivePermissions</code></li>
-                  <li>Click <strong>"Run"</strong> button</li>
-                  <li>When prompted, click <strong>"Review permissions"</strong></li>
-                  <li>Select your Google account</li>
-                  <li>Click <strong>"Advanced"</strong> → <strong>"Go to [Project Name] (unsafe)"</strong></li>
-                  <li>Click <strong>"Allow"</strong> to grant Drive API access</li>
-                  <li>Run function: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">initializeHrmDriveFolders()</code> to create folder structure</li>
-                  <li>Try uploading again</li>
-                </ol>
-                <p style="margin-top: 1rem; padding: 0.75rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
-                  <strong>Note:</strong> This setup only needs to be done once. After authorization, all HRM admins will be able to upload documents.
-                </p>
-              </div>
-            `,
-            width: '700px',
-            confirmButtonText: 'I Understand',
-            confirmButtonColor: '#059669'
-          });
-        } else {
-          await UI.showError('Upload Failed', err.message || 'Failed to upload document. Please try again.');
-        }
-      } finally {
-        document.body.removeChild(input);
+          UI.closeLoading();
+          const msg = failed > 0
+            ? 'Uploaded ' + uploaded + ' document(s). ' + failed + ' failed.'
+            : 'Successfully uploaded ' + uploaded + ' document(s)!';
+          await Swal.fire({ icon: failed > 0 ? 'warning' : 'success', title: 'Done', text: msg });
+          if (uploaded > 0 && slotsLeft - uploaded > 0) {
+            const again = await Swal.fire({
+              title: 'Add more documents?',
+              showCancelButton: true,
+              confirmButtonText: 'Yes',
+              cancelButtonText: 'No'
+            });
+            if (again.isConfirmed) {
+              await uploadEmployeeDocument(employeeId, formationId, subUnitId);
+            }
+          }
+        };
+
+        renderAdminDocList();
       }
-    };
+    });
   }
 
   async function viewEmployeeProfile(employeeId) {
