@@ -404,6 +404,37 @@ const AdminPage = (function () {
 
   let currentModule = null;
 
+  const ADMIN_INACTIVITY_MS = 3 * 60 * 1000; // 3 minutes
+  let inactivityTimer = null;
+
+  function resetInactivityTimer() {
+    if (!adminKey) return;
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      inactivityTimer = null;
+      handleLogout();
+      window.location.href = 'admin.html';
+    }, ADMIN_INACTIVITY_MS);
+  }
+
+  function setupInactivityTimer() {
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+    events.forEach(ev => {
+      document.removeEventListener(ev, resetInactivityTimer);
+      document.addEventListener(ev, resetInactivityTimer);
+    });
+    resetInactivityTimer();
+  }
+
+  function clearInactivityTimer() {
+    if (inactivityTimer) {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = null;
+    }
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+    events.forEach(ev => document.removeEventListener(ev, resetInactivityTimer));
+  }
+
   // Helper function to check if a role is any HRM admin role
   function isHrmAdminRole(role) {
     return role === 'HRM_ADMIN' || role === 'HRM_ADMIN_1' || role === 'HRM_ADMIN_2' || role === 'HRM_ADMIN_3' || role === 'HRM_VIEWER';
@@ -614,6 +645,7 @@ const AdminPage = (function () {
   }
 
   function handleLogout() {
+    clearInactivityTimer();
     // Clear admin session
     adminToken = null;
     adminKey = null;
@@ -677,6 +709,7 @@ const AdminPage = (function () {
 
       adminToken = res.data.adminToken;
       adminKey = key;
+      setupInactivityTimer();
       adminRole = res.data.role;
       adminFormationId = res.data.formationId;
       adminDepartmentId = res.data.departmentId;
@@ -6733,6 +6766,10 @@ const AdminPage = (function () {
             <span class="sidebar-link-icon">🗄️</span>
             <span>Data Storage</span>
           </a>
+          <a href="#" class="sidebar-link" data-view="module-reset">
+            <span class="sidebar-link-icon">🔄</span>
+            <span>Module Reset (Testing)</span>
+          </a>
         </div>
       `;
 
@@ -7800,6 +7837,15 @@ const AdminPage = (function () {
         loadSystemAuditLogs(getTodayOnlyFilters());
       });
       await loadSystemAuditLogs(getTodayOnlyFilters());
+    } else if (view === 'module-reset') {
+      container.innerHTML = `
+        <section class="card card-full-width">
+          <h2>Module Reset (Testing)</h2>
+          <p class="info info-warning" style="margin-bottom: 1rem;">Safely reset module data sheets for testing. This clears all data rows but preserves headers and structure. Use only for removing demo data during testing.</p>
+          <div id="moduleResetSheetsList" class="table-wrapper" style="margin-top: 1rem;">Loading...</div>
+        </section>
+      `;
+      await loadModuleResetSheets();
     } else if (view === 'retention') {
       container.innerHTML = `
         <section class="card card-full-width">
@@ -7819,6 +7865,73 @@ const AdminPage = (function () {
       await loadRetentionPolicy();
     } else {
       container.innerHTML = `<div class="info info-muted">Loading System ${view}...</div>`;
+    }
+  }
+
+  async function loadModuleResetSheets() {
+    const container = document.getElementById('moduleResetSheetsList');
+    if (!container || !adminKey || adminRole !== 'SUPER_ADMIN') return;
+
+    try {
+      const res = await Api.call('listResettableSheets', { key: adminKey });
+      if (!res || !res.success || !res.data || !res.data.sheets) {
+        container.innerHTML = '<p class="info info-muted">Could not load sheets.</p>';
+        return;
+      }
+
+      const sheets = res.data.sheets;
+      if (sheets.length === 0) {
+        container.innerHTML = '<p class="info info-muted">No resettable sheets found.</p>';
+        return;
+      }
+
+      let html = '<table class="data-table"><thead><tr><th>Sheet</th><th>Description</th><th>Rows</th><th>Action</th></tr></thead><tbody>';
+      for (const s of sheets) {
+        const name = (s.name || s.sheetName || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const desc = (s.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const rows = s.rowCount != null ? s.rowCount : '-';
+        html += `<tr>
+          <td>${name}</td>
+          <td>${desc}</td>
+          <td>${rows}</td>
+          <td><button type="button" class="btn btn-danger btn-xs" data-sheet="${name}" title="Reset sheet (clears data, keeps headers)">Reset</button></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-sheet]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sheetName = btn.getAttribute('data-sheet');
+          const confirm = await Swal.fire({
+            title: 'Confirm Reset',
+            html: `Are you sure you want to reset <strong>${sheetName}</strong>?<br><br>All data rows will be deleted. Headers will be preserved. This cannot be undone.`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Reset',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc2626'
+          });
+          if (!confirm.isConfirmed) return;
+
+          try {
+            UI.showLoading('Resetting', 'Clearing sheet data...');
+            const res = await Api.call('safeResetSheet', { key: adminKey, sheetName });
+            UI.closeLoading();
+            if (res && res.success) {
+              await Swal.fire({ icon: 'success', title: 'Done', text: res.message || 'Sheet reset successfully.' });
+              loadModuleResetSheets();
+            } else {
+              await UI.showError('Reset Failed', res?.message || 'Could not reset sheet.');
+            }
+          } catch (err) {
+            UI.closeLoading();
+            await UI.showError('Reset Failed', err?.message || 'Could not reset sheet.');
+          }
+        });
+      });
+    } catch (err) {
+      if (container) container.innerHTML = '<p class="info info-muted">Error loading sheets: ' + (err.message || 'Unknown error') + '</p>';
     }
   }
 

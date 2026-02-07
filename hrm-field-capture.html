@@ -283,8 +283,8 @@
 
     <div id="stepSuccess" class="step">
       <section class="card">
-        <h1>Registration complete</h1>
-        <p id="successMessage">Your staff record has been created successfully. You may close this page.</p>
+        <h1>Information Captured Successfully</h1>
+        <p id="successMessage">Thank you. You will be redirected shortly.</p>
       </section>
     </div>
   </main>
@@ -559,7 +559,7 @@
           var file = photoInput.files[0];
           if (file.size > 2 * 1024 * 1024) {
             Swal.fire({ icon: 'warning', title: 'Photo skipped', text: 'Profile picture must be 2MB or less. Record was saved.' });
-            showSuccess(employeeId);
+            showSuccess();
             return;
           }
           resizeAndCompressProfilePhoto(file).then(function (pic) {
@@ -605,11 +605,13 @@
       });
   });
 
-  function showSuccess(employeeId) {
+  function showSuccess() {
     Swal.close();
-    document.getElementById('successMessage').textContent =
-      'Your staff record has been created successfully.' + (employeeId ? ' Employee ID: ' + employeeId + '.' : '') + ' You may close this page.';
+    document.getElementById('successMessage').textContent = 'Thank you. You will be redirected shortly.';
     showStep('stepSuccess');
+    setTimeout(function () {
+      window.location.href = 'index.html';
+    }, 2000);
   }
 
   var fcDocState = { employeeId: '', documentUploadToken: '', subUnitId: '', uploaded: [] };
@@ -694,7 +696,7 @@
   });
 
   document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
-    showSuccess(fcDocState.employeeId);
+    showSuccess();
   });
 
   window.addEventListener('DOMContentLoaded', function () {
