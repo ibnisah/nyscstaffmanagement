@@ -489,15 +489,19 @@
       profilePhotoSource = null;
     }
 
-    function handlePhotoSelection(isCamera) {
-      clearAllPhotoSelections(isCamera ? 'camera' : 'gallery');
-      var input = isCamera ? cameraInput : galleryInput;
-      var file = input.files && input.files[0];
+    function handlePhotoSelection(isCamera, event) {
+      var file = event.target.files && event.target.files[0];
+      if (isCamera) {
+        galleryInput.value = '';
+        if (galleryFileNameEl) galleryFileNameEl.textContent = '';
+      } else {
+        cameraInput.value = '';
+        if (cameraFileNameEl) cameraFileNameEl.textContent = '';
+      }
       if (!file) return;
       var validation = validateProfilePhotoFile(file);
       if (!validation.ok) {
         Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
-        input.value = '';
         return;
       }
       profilePhotoSource = isCamera ? 'camera' : 'gallery';
@@ -505,8 +509,8 @@
       if (!isCamera && galleryFileNameEl) galleryFileNameEl.textContent = file.name;
     }
 
-    cameraInput.addEventListener('change', function () { handlePhotoSelection(true); });
-    galleryInput.addEventListener('change', function () { handlePhotoSelection(false); });
+    cameraInput.addEventListener('change', function (e) { handlePhotoSelection(true, e); });
+    galleryInput.addEventListener('change', function (e) { handlePhotoSelection(false, e); });
 
     window.resetPhotoSelection = function () {
       clearAllPhotoSelections();
