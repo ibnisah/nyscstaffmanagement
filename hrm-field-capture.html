@@ -19,6 +19,10 @@
     .field-capture-form .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     @media (max-width: 600px) { .field-capture-form .row2 { grid-template-columns: 1fr; } }
     .btn-block { width: 100%; padding: 0.75rem; margin-top: 0.5rem; }
+    .photo-options-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.35rem; }
+    .photo-option { flex: 1 1 160px; min-width: 0; }
+    .photo-option button { width: 100%; }
+    .photo-filename { word-break: break-word; min-height: 2rem; font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
   </style>
 </head>
 <body>
@@ -263,15 +267,15 @@
             <label>Profile picture (optional, max 5MB)</label>
             <input type="file" id="fcProfilePhotoCamera" accept="image/*" capture="environment" style="display: none;" />
             <input type="file" id="fcProfilePhotoGallery" accept="image/*" style="display: none;" />
-            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.35rem; align-items: center;">
-              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
-                <button type="button" id="fcProfilePhotoTakeBtn" class="btn btn-secondary">Take Photo</button>
-                <span id="cameraFileName" style="font-size: 0.875rem; color: #6b7280;"></span>
-              </span>
-              <span style="display: inline-flex; align-items: center; gap: 0.35rem;">
-                <button type="button" id="fcProfilePhotoGalleryBtn" class="btn btn-secondary">Upload from Gallery</button>
-                <span id="galleryFileName" style="font-size: 0.875rem; color: #6b7280;"></span>
-              </span>
+            <div class="photo-options-row">
+              <div class="photo-option">
+                <button type="button" id="fcProfilePhotoTakeBtn" class="btn btn-secondary">📷 Take Photo</button>
+                <div id="cameraFileName" class="photo-filename"></div>
+              </div>
+              <div class="photo-option">
+                <button type="button" id="fcProfilePhotoGalleryBtn" class="btn btn-secondary">🖼 Upload from Gallery</button>
+                <div id="galleryFileName" class="photo-filename"></div>
+              </div>
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">Submit registration</button>
@@ -474,27 +478,20 @@
     var galleryFileNameEl = document.getElementById('galleryFileName');
     if (!cameraInput || !galleryInput || !takeBtn || !galleryBtn) return;
 
-    takeBtn.addEventListener('click', function () { if (!takeBtn.disabled) cameraInput.click(); });
-    galleryBtn.addEventListener('click', function () { if (!galleryBtn.disabled) galleryInput.click(); });
+    takeBtn.addEventListener('click', function () { cameraInput.click(); });
+    galleryBtn.addEventListener('click', function () { galleryInput.click(); });
 
-    function setPhotoFromCamera(file) {
-      profilePhotoSource = 'camera';
-      if (cameraFileNameEl) cameraFileNameEl.textContent = file ? file.name : '';
-      if (galleryFileNameEl) galleryFileNameEl.textContent = '';
-      galleryInput.value = '';
-      takeBtn.disabled = false;
-      galleryBtn.disabled = true;
-    }
-    function setPhotoFromGallery(file) {
-      profilePhotoSource = 'gallery';
-      if (galleryFileNameEl) galleryFileNameEl.textContent = file ? file.name : '';
-      if (cameraFileNameEl) cameraFileNameEl.textContent = '';
-      cameraInput.value = '';
-      galleryBtn.disabled = false;
-      takeBtn.disabled = true;
+    function clearPreviousSelection(isCamera) {
+      if (isCamera) {
+        if (galleryFileNameEl) galleryFileNameEl.textContent = '';
+        galleryInput.value = '';
+      } else {
+        if (cameraFileNameEl) cameraFileNameEl.textContent = '';
+        cameraInput.value = '';
+      }
     }
 
-    function onPhotoSelected(isCamera) {
+    function handlePhotoSelection(isCamera) {
       var input = isCamera ? cameraInput : galleryInput;
       var file = input.files && input.files[0];
       if (!file) return;
@@ -502,16 +499,19 @@
       if (!validation.ok) {
         Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
         input.value = '';
-        if (isCamera) setPhotoFromCamera(null); else setPhotoFromGallery(null);
-        takeBtn.disabled = false;
-        galleryBtn.disabled = false;
+        if (cameraFileNameEl && isCamera) cameraFileNameEl.textContent = '';
+        if (galleryFileNameEl && !isCamera) galleryFileNameEl.textContent = '';
         profilePhotoSource = null;
         return;
       }
-      if (isCamera) setPhotoFromCamera(file); else setPhotoFromGallery(file);
+      clearPreviousSelection(!isCamera);
+      profilePhotoSource = isCamera ? 'camera' : 'gallery';
+      if (isCamera && cameraFileNameEl) cameraFileNameEl.textContent = file.name;
+      if (!isCamera && galleryFileNameEl) galleryFileNameEl.textContent = file.name;
     }
-    cameraInput.addEventListener('change', function () { onPhotoSelected(true); });
-    galleryInput.addEventListener('change', function () { onPhotoSelected(false); });
+
+    cameraInput.addEventListener('change', function () { handlePhotoSelection(true); });
+    galleryInput.addEventListener('change', function () { handlePhotoSelection(false); });
 
     window.resetPhotoSelection = function () {
       profilePhotoSource = null;
@@ -519,8 +519,6 @@
       if (galleryFileNameEl) galleryFileNameEl.textContent = '';
       cameraInput.value = '';
       galleryInput.value = '';
-      takeBtn.disabled = false;
-      galleryBtn.disabled = false;
     };
   })();
 
