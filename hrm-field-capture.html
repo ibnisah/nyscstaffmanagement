@@ -260,8 +260,8 @@
             </select>
           </div>
           <div class="field">
-            <label>Profile picture (optional, max 2MB)</label>
-            <input type="file" id="fcProfilePhoto" accept="image/jpeg,image/png,image/webp,image/jpg" />
+            <label>Profile picture (optional, max 5MB)</label>
+            <input type="file" id="fcProfilePhoto" accept="image/*" capture="environment" />
           </div>
           <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">Submit registration</button>
         </form>
@@ -353,13 +353,46 @@
     });
   }
 
-  function resizeAndCompressProfilePhoto(file) {
+  var PROFILE_PHOTO_MAX_SIZE = 5 * 1024 * 1024; // 5MB
+  var PROFILE_PHOTO_ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp', 'image/gif'];
+
+  function isAllowedImageType(file) {
+    if (!file) return false;
+    if (file.type) {
+      var t = file.type.toLowerCase();
+      if (PROFILE_PHOTO_ALLOWED_TYPES.indexOf(t) !== -1) return true;
+    }
+    if (file.name) {
+      var ext = (file.name.split('.').pop() || '').toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].indexOf(ext) !== -1) return true;
+    }
+    return false;
+  }
+
+  function validateProfilePhotoFile(file) {
+    if (!file) return { ok: false, message: 'Please select an image.' };
+    if (!isAllowedImageType(file)) {
+      return { ok: false, message: 'Only image files are allowed (JPEG, PNG, WebP, GIF). Please choose another file.' };
+    }
+    if (file.size > PROFILE_PHOTO_MAX_SIZE) {
+      return { ok: false, message: 'File is too large. Maximum size is 5MB. Please choose a smaller image.' };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Compress image using canvas: max 500x500, aspect ratio preserved, JPEG 0.75.
+   * Works on mobile (Android Chrome, iOS Safari). No external libraries.
+   * @param {File} file - Image file from input
+   * @returns {Promise<Blob>} Compressed JPEG Blob
+   */
+  async function compressImage(file) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
       var url = URL.createObjectURL(file);
       img.onload = function () {
         URL.revokeObjectURL(url);
-        var max = 400;
+        var max = 500;
         var w = img.naturalWidth;
         var h = img.naturalHeight;
         if (w > max || h > max) {
@@ -374,29 +407,64 @@
         ctx.drawImage(img, 0, 0, w, h);
         canvas.toBlob(function (blob) {
           if (!blob) {
-            reject(new Error('Failed to create image blob'));
+            reject(new Error('Failed to create image'));
             return;
           }
-          var reader = new FileReader();
-          reader.onload = function () {
-            resolve({
-              base64: reader.result,
-              fileName: (file.name ? file.name.replace(/\.[^.]+$/, '') : 'profile') + '.jpg',
-              mimeType: 'image/jpeg',
-              fileSize: blob.size
-            });
-          };
-          reader.onerror = function () { reject(new Error('Failed to read blob')); };
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.8);
+          resolve(blob);
+        }, 'image/jpeg', 0.75);
       };
       img.onerror = function () {
         URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image'));
+        reject(new Error('Image could not be loaded. Please try another file.'));
       };
       img.src = url;
     });
   }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(reader.result); };
+      reader.onerror = function () { reject(new Error('Failed to read image')); };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * Build profilePhotoPayload from file: validate, compress, then return { fileName, mimeType, fileSize, base64Data }.
+   * Existing upload flow uses this payload; backend and fileData format unchanged.
+   */
+  function resizeAndCompressProfilePhoto(file) {
+    var validation = validateProfilePhotoFile(file);
+    if (!validation.ok) {
+      return Promise.reject(new Error(validation.message));
+    }
+    return compressImage(file).then(function (blob) {
+      return blobToBase64(blob).then(function (base64Data) {
+        var baseName = (file.name && file.name.replace(/\.[^.]+$/, '')) ? file.name.replace(/\.[^.]+$/, '') : 'profile';
+        return {
+          fileName: baseName + '.jpg',
+          mimeType: 'image/jpeg',
+          fileSize: blob.size,
+          base64Data: base64Data
+        };
+      });
+    });
+  }
+
+  (function setupProfilePhotoValidation() {
+    var photoInput = document.getElementById('fcProfilePhoto');
+    if (!photoInput) return;
+    photoInput.addEventListener('change', function () {
+      var file = this.files && this.files[0];
+      if (!file) return;
+      var validation = validateProfilePhotoFile(file);
+      if (!validation.ok) {
+        Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
+        this.value = '';
+      }
+    });
+  })();
 
   function doLocationStep() {
     showStep('stepLocation');
@@ -557,21 +625,22 @@
         var photoInput = document.getElementById('fcProfilePhoto');
         if (profileUploadToken && photoInput && photoInput.files && photoInput.files[0]) {
           var file = photoInput.files[0];
-          if (file.size > 2 * 1024 * 1024) {
-            Swal.fire({ icon: 'warning', title: 'Photo skipped', text: 'Profile picture must be 2MB or less. Record was saved.' });
-            showSuccess();
+          var validation = validateProfilePhotoFile(file);
+          if (!validation.ok) {
+            Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
+            Swal.close();
             return;
           }
-          resizeAndCompressProfilePhoto(file).then(function (pic) {
+          resizeAndCompressProfilePhoto(file).then(function (profilePhotoPayload) {
             return Api.call('uploadStaffProfilePictureFieldCapture', {
               profileUploadToken: profileUploadToken,
               employeeId: employeeId,
               formationId: formationId,
               subUnitId: (res.data && res.data.subUnitId) || staff.subUnitId || '',
-              fileData: pic.base64,
-              fileName: pic.fileName,
-              mimeType: pic.mimeType,
-              fileSize: pic.fileSize
+              fileData: profilePhotoPayload.base64Data,
+              fileName: profilePhotoPayload.fileName,
+              mimeType: profilePhotoPayload.mimeType,
+              fileSize: profilePhotoPayload.fileSize
             });
           }).then(function (uploadRes) {
             if (uploadRes && uploadRes.success) {
