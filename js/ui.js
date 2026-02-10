@@ -404,7 +404,7 @@ const AdminPage = (function () {
 
   let currentModule = null;
 
-  const ADMIN_INACTIVITY_MS = 3 * 60 * 1000; // 3 minutes
+  const ADMIN_INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
   let inactivityTimer = null;
 
   function resetInactivityTimer() {
