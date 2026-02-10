@@ -285,8 +285,23 @@
 
     <div id="stepDocuments" class="step">
       <section class="card">
-        <h1>Upload documents (optional)</h1>
-        <p>You can upload relevant documents (JPG/JPEG images, max 2MB each).</p>
+        <h1>Upload documents</h1>
+        <div class="field" style="margin-bottom: 1.25rem;">
+          <label>Full Length Photograph (Mandatory)</label>
+          <input type="file" id="fcFullPhotoCamera" accept="image/*" capture="environment" style="display: none;" />
+          <input type="file" id="fcFullPhotoGallery" accept="image/*" style="display: none;" />
+          <div class="photo-options-row">
+            <div class="photo-option">
+              <button type="button" id="fcFullPhotoTakeBtn" class="btn btn-secondary">Take Photo</button>
+              <div id="fcFullPhotoCameraName" class="photo-filename"></div>
+            </div>
+            <div class="photo-option">
+              <button type="button" id="fcFullPhotoGalleryBtn" class="btn btn-secondary">Upload from Gallery</button>
+              <div id="fcFullPhotoGalleryName" class="photo-filename"></div>
+            </div>
+          </div>
+        </div>
+        <p style="margin-bottom: 1rem;">Optional: You can upload additional documents (JPG/JPEG images, max 2MB each).</p>
         <div id="fcDocList" style="margin: 1rem 0; min-height: 2rem;"></div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <input type="file" id="fcDocFileInput" accept="image/jpeg,image/jpg,.jpg,.jpeg" style="display: none;" />
@@ -467,7 +482,79 @@
     });
   }
 
+  var FULL_PHOTO_MAX_SIZE = 8 * 1024 * 1024; // 8MB
+
+  function validateFullPhotoFile(file) {
+    if (!file) return { ok: false, message: 'Please select an image.' };
+    if (!isAllowedImageType(file)) {
+      return { ok: false, message: 'Only image files are allowed (JPEG, PNG, WebP, GIF).' };
+    }
+    if (file.size > FULL_PHOTO_MAX_SIZE) {
+      return { ok: false, message: 'File is too large. Maximum size is 8MB.' };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Compress image for full-length photo: max 800x1000, aspect ratio preserved, JPEG 0.75.
+   * Reuses same canvas pipeline as profile photo; different dimensions only.
+   */
+  function compressImageForFullPhoto(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var maxW = 800;
+        var maxH = 1000;
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        if (w > maxW || h > maxH) {
+          var r = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * r);
+          h = Math.round(h * r);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) {
+          if (!blob) {
+            reject(new Error('Failed to create image'));
+            return;
+          }
+          resolve(blob);
+        }, 'image/jpeg', 0.75);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('Image could not be loaded.'));
+      };
+      img.src = url;
+    });
+  }
+
+  function buildFullPhotoPayload(file) {
+    var validation = validateFullPhotoFile(file);
+    if (!validation.ok) {
+      return Promise.reject(new Error(validation.message));
+    }
+    return compressImageForFullPhoto(file).then(function (blob) {
+      return blobToBase64(blob).then(function (base64Data) {
+        var baseName = (file.name && file.name.replace(/\.[^.]+$/, '')) ? file.name.replace(/\.[^.]+$/, '') : 'fullphoto';
+        return {
+          fileName: baseName + '.jpg',
+          mimeType: 'image/jpeg',
+          fileSize: blob.size,
+          base64Data: base64Data
+        };
+      });
+    });
+  }
+
   var profilePhotoSource = null; // 'camera' | 'gallery' | null
+  var fullPhotoPayload = null;   // { fileName, mimeType, fileSize, base64Data } for full-length photo
 
   (function setupProfilePhotoTwoInputs() {
     var cameraInput = document.getElementById('fcProfilePhotoCamera');
@@ -515,6 +602,51 @@
     window.resetPhotoSelection = function () {
       clearAllPhotoSelections();
     };
+  })();
+
+  (function setupFullPhotoTwoInputs() {
+    var cameraInput = document.getElementById('fcFullPhotoCamera');
+    var galleryInput = document.getElementById('fcFullPhotoGallery');
+    var takeBtn = document.getElementById('fcFullPhotoTakeBtn');
+    var galleryBtn = document.getElementById('fcFullPhotoGalleryBtn');
+    var cameraNameEl = document.getElementById('fcFullPhotoCameraName');
+    var galleryNameEl = document.getElementById('fcFullPhotoGalleryName');
+    if (!cameraInput || !galleryInput || !takeBtn || !galleryBtn) return;
+
+    takeBtn.addEventListener('click', function () { cameraInput.click(); });
+    galleryBtn.addEventListener('click', function () { galleryInput.click(); });
+
+    function clearOtherFullPhoto(isCamera) {
+      if (isCamera) {
+        galleryInput.value = '';
+        if (galleryNameEl) galleryNameEl.textContent = '';
+      } else {
+        cameraInput.value = '';
+        if (cameraNameEl) cameraNameEl.textContent = '';
+      }
+    }
+
+    function handleFullPhotoSelection(isCamera, event) {
+      var file = event.target.files && event.target.files[0];
+      clearOtherFullPhoto(isCamera);
+      if (!file) return;
+      var validation = validateFullPhotoFile(file);
+      if (!validation.ok) {
+        Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
+        return;
+      }
+      fullPhotoPayload = null;
+      buildFullPhotoPayload(file).then(function (payload) {
+        fullPhotoPayload = payload;
+        if (isCamera && cameraNameEl) cameraNameEl.textContent = file.name;
+        if (!isCamera && galleryNameEl) galleryNameEl.textContent = file.name;
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'Full photo', text: err.message || 'Failed to process image.' });
+      });
+    }
+
+    cameraInput.addEventListener('change', function (e) { handleFullPhotoSelection(true, e); });
+    galleryInput.addEventListener('change', function (e) { handleFullPhotoSelection(false, e); });
   })();
 
   function doLocationStep() {
@@ -672,6 +804,7 @@
         var employeeId = res.data.employeeId;
         var profileUploadToken = res.data.profileUploadToken;
         var documentUploadToken = res.data.documentUploadToken;
+        var fullPhotoUploadToken = res.data.fullPhotoUploadToken || '';
         var subUnitIdRes = (res.data && res.data.subUnitId) || staff.subUnitId || '';
         var cameraInput = document.getElementById('fcProfilePhotoCamera');
         var galleryInput = document.getElementById('fcProfilePhotoGallery');
@@ -696,14 +829,14 @@
             });
           }).then(function (uploadRes) {
             if (uploadRes && uploadRes.success) {
-              goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+              goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
             } else {
             Swal.fire({
               icon: 'warning',
               title: 'Profile picture could not be uploaded',
               text: (uploadRes && uploadRes.message) ? uploadRes.message : 'Your record was saved. You can add a profile picture later via the admin.'
             });
-            goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+            goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
             }
           }).catch(function (err) {
             Swal.fire({
@@ -711,10 +844,10 @@
               title: 'Profile picture upload failed',
               text: (err && err.message) ? err.message : 'Your record was saved. You can add a profile picture later via the admin.'
             });
-            goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+            goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
           });
         } else {
-          goToDocumentsStep(employeeId, documentUploadToken, subUnitIdRes);
+          goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
         }
       })
       .catch(function (err) {
@@ -735,11 +868,17 @@
     }, 2000);
   }
 
-  var fcDocState = { employeeId: '', documentUploadToken: '', subUnitId: '', uploaded: [] };
+  var fcDocState = { employeeId: '', documentUploadToken: '', fullPhotoUploadToken: '', subUnitId: '', uploaded: [] };
 
-  function goToDocumentsStep(employeeId, documentUploadToken, subUnitId) {
+  function goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitId) {
     Swal.close();
-    fcDocState = { employeeId: employeeId || '', documentUploadToken: documentUploadToken || '', subUnitId: subUnitId || '', uploaded: [] };
+    fcDocState = {
+      employeeId: employeeId || '',
+      documentUploadToken: documentUploadToken || '',
+      fullPhotoUploadToken: fullPhotoUploadToken || '',
+      subUnitId: subUnitId || '',
+      uploaded: []
+    };
     document.getElementById('fcDocList').innerHTML = '<em style="color: #6b7280;">No documents uploaded yet.</em>';
     showStep('stepDocuments');
   }
@@ -817,7 +956,46 @@
   });
 
   document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
-    showSuccess();
+    if (!fullPhotoPayload) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Full length photograph required',
+        text: 'Please take or upload a full length photograph before finishing.'
+      });
+      return;
+    }
+    if (!fcDocState.fullPhotoUploadToken || !fcDocState.employeeId) {
+      Swal.fire({ icon: 'error', title: 'Error', text: 'Session expired. Please start again from the QR link.' });
+      return;
+    }
+    Swal.fire({ title: 'Uploading...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+    Api.call('uploadStaffFullPictureFieldCapture', {
+      fullPhotoUploadToken: fcDocState.fullPhotoUploadToken,
+      employeeId: fcDocState.employeeId,
+      formationId: formationId,
+      subUnitId: fcDocState.subUnitId || '',
+      fileData: fullPhotoPayload.base64Data,
+      fileName: fullPhotoPayload.fileName,
+      mimeType: fullPhotoPayload.mimeType,
+      fileSize: fullPhotoPayload.fileSize
+    }).then(function (uploadRes) {
+      if (uploadRes && uploadRes.success) {
+        fullPhotoPayload = null;
+        showSuccess();
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'Full photo upload failed',
+          text: (uploadRes && uploadRes.message) ? uploadRes.message : 'Could not upload full length photograph. Please try again.'
+        });
+      }
+    }).catch(function (err) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Full photo upload failed',
+        text: (err && err.message) ? err.message : 'Could not upload full length photograph. Please try again.'
+      });
+    });
   });
 
   window.addEventListener('DOMContentLoaded', function () {
