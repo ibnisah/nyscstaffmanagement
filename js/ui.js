@@ -3278,7 +3278,7 @@ const AdminPage = (function () {
   // ============================================================================
 
   let currentStaffPage = 1;
-  let currentStaffLimit = 20; // Fixed at 20 per page as per requirements
+  let currentStaffLimit = 10; // 10 entries per page
 
   /**
    * Load HRM notifications (requests for approval or own request statuses)
@@ -4254,10 +4254,11 @@ const AdminPage = (function () {
         const formationName = s.formationId ? (formationMap[s.formationId] || 'Not Assigned') : 'Not Assigned';
         const departmentName = s.subUnitId ? (departmentMap[s.subUnitId] || 'Not Assigned') : 'Not Assigned';
 
+        const staffName = (s.surname || '') + (s.otherNames ? ' ' + s.otherNames : '') || s.name || 'N/A';
         html += `<tr>
           <td>${serialNumber}</td>
           <td>${s.fileNumber || 'N/A'}</td>
-          <td><strong>${(s.surname || '') + (s.otherNames ? ' ' + s.otherNames : '') || s.name || 'N/A'}</strong></td>
+          <td><span class="staff-name-link" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="View full profile" style="cursor: pointer; color: var(--nysc-green, #059669); font-weight: bold;">${staffName}</span></td>
           <td>${s.cadre || 'N/A'}</td>
           <td>${s.rank || 'N/A'}</td>
           <td>${gradeLevelDisplay}</td>
@@ -4282,6 +4283,11 @@ const AdminPage = (function () {
         container.removeEventListener('click', container._staffTableHandler);
       }
       container._staffTableHandler = function(e) {
+        const nameLink = e.target.closest('.staff-name-link');
+        if (nameLink && nameLink.dataset.employeeId) {
+          AdminPage.showFullStaffProfile(nameLink.dataset.employeeId, nameLink.dataset.formationId || '');
+          return;
+        }
         const btn = e.target.closest('.staff-btn-view, .staff-btn-edit, .staff-btn-archive, .staff-btn-unarchive');
         if (!btn || !btn.dataset.employeeId) return;
         const empId = btn.dataset.employeeId;
@@ -4889,19 +4895,24 @@ const AdminPage = (function () {
               <h3 style="margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Documents</h3>
               ${documents.length === 0
                 ? '<p class="info info-muted">No documents uploaded.</p>'
-                : `<div class="staff-doc-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1rem; margin-top: 0.5rem;">
-                ${documents.map(d => {
-                  const downloadUrl = 'https://drive.google.com/uc?id=' + (d.driveFileId || '') + '&export=download';
-                  const safeName = (d.fileName || 'Document').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                  const docPlaceholderSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Crect fill='%23e5e7eb' width='140' height='140'/%3E%3Ctext x='50%25' y='45%25' fill='%236b7280' font-size='14' text-anchor='middle'%3EDocument%3C/text%3E%3Ctext x='50%25' y='55%25' fill='%239ca3af' font-size='11' text-anchor='middle'%3EClick to open%3C/text%3E%3C/svg%3E";
-                  return `<a href="${downloadUrl}" target="_blank" rel="noopener" style="display: block; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; text-decoration: none; color: inherit;">
-                  <div style="aspect-ratio: 1; background: #f3f4f6; overflow: hidden;">
-                    <img src="${docPlaceholderSvg}" alt="${safeName}" style="width: 100%; height: 100%; object-fit: cover;" />
-                  </div>
-                  <div style="padding: 0.5rem; font-size: 0.8rem; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeName}</div>
-                </a>`;
-                }).join('')}
+                : `<div id="staffDocGalleryWrap" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #f9fafb;">
+                <div style="position: relative; min-height: 280px; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
+                  <img id="staffDocGalleryImg" src="" alt="Document" style="max-width: 100%; max-height: 280px; object-fit: contain; cursor: pointer;" />
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-top: 1px solid #e5e7eb; background: #fff;">
+                  <button type="button" id="staffDocGalleryPrev" class="btn btn-secondary" style="padding: 0.5rem 1rem;">← Previous</button>
+                  <span id="staffDocGalleryCount" style="font-size: 0.9rem; color: #374151; font-weight: 500;">1 / ${documents.length}</span>
+                  <button type="button" id="staffDocGalleryNext" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next →</button>
+                </div>
+                <div id="staffDocGalleryCaption" style="padding: 0.5rem 1rem; font-size: 0.8rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
               </div>`}
+            </div>
+
+            <div id="fullPhotoSection" style="margin-bottom: 1.5rem; display: none;">
+              <h3 style="margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Full Length Photograph</h3>
+              <div id="fullPhotoThumbWrap" style="max-width: 280px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; cursor: pointer; background: #f9fafb;">
+                <img id="fullPhotoThumbImg" src="" alt="Full length" style="width: 100%; height: auto; display: block; min-height: 200px; object-fit: contain;" />
+              </div>
             </div>
 
             <div style="text-align: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e5e7eb;">
@@ -4953,6 +4964,69 @@ const AdminPage = (function () {
           const profileImg = document.getElementById('fullStaffProfilePhotoImg');
           if (profileImg) {
             renderProfilePhoto(profileImg, staff.profilePhotoFileId || null, 'w300');
+          }
+          // Full length photograph (below documents, view in UI)
+          const fullPhotoSection = document.getElementById('fullPhotoSection');
+          const fullPhotoThumbImg = document.getElementById('fullPhotoThumbImg');
+          const fullPhotoThumbWrap = document.getElementById('fullPhotoThumbWrap');
+          if (staff.fullPictureFileId && fullPhotoSection && fullPhotoThumbImg) {
+            fullPhotoSection.style.display = 'block';
+            const fullPhotoThumbUrl = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(staff.fullPictureFileId) + '&sz=w400';
+            const fullPhotoViewUrl = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(staff.fullPictureFileId) + '&sz=w1200';
+            fullPhotoThumbImg.src = fullPhotoThumbUrl;
+            fullPhotoThumbImg.onerror = function () {
+              fullPhotoThumbImg.style.background = '#e5e7eb';
+              fullPhotoThumbImg.alt = 'Image not available';
+            };
+            if (fullPhotoThumbWrap) {
+              fullPhotoThumbWrap.onclick = () => {
+                const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
+                if (viewImg) viewImg(fullPhotoViewUrl, 'Full Length Photograph');
+                else window.open(fullPhotoViewUrl, '_blank');
+              };
+            }
+          }
+          // Documents gallery: render thumbnails, prev/next, view full screen in UI
+          const galleryImg = document.getElementById('staffDocGalleryImg');
+          const galleryPrev = document.getElementById('staffDocGalleryPrev');
+          const galleryNext = document.getElementById('staffDocGalleryNext');
+          const galleryCount = document.getElementById('staffDocGalleryCount');
+          const galleryCaption = document.getElementById('staffDocGalleryCaption');
+          if (documents.length > 0 && galleryImg) {
+            let docIndex = 0;
+            const docThumb = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w400';
+            const docView = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w1200';
+            function updateDocGallery() {
+              const d = documents[docIndex];
+              if (!d) return;
+              galleryImg.src = docThumb(d);
+              galleryImg.alt = d.fileName || 'Document';
+              if (galleryCount) galleryCount.textContent = (docIndex + 1) + ' / ' + documents.length;
+              if (galleryCaption) galleryCaption.textContent = d.fileName || 'Document';
+            }
+            updateDocGallery();
+            galleryImg.onerror = function () {
+              this.style.background = '#e5e7eb';
+              this.alt = 'Image not available';
+            };
+            galleryImg.onclick = function () {
+              const d = documents[docIndex];
+              if (!d) return;
+              const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
+              if (viewImg) viewImg(docView(d), d.fileName || 'Document');
+            };
+            if (galleryPrev) {
+              galleryPrev.onclick = () => {
+                docIndex = docIndex <= 0 ? documents.length - 1 : docIndex - 1;
+                updateDocGallery();
+              };
+            }
+            if (galleryNext) {
+              galleryNext.onclick = () => {
+                docIndex = docIndex >= documents.length - 1 ? 0 : docIndex + 1;
+                updateDocGallery();
+              };
+            }
           }
           // Scroll to top of content
           const contentDiv = document.getElementById('fullStaffProfileContent');
@@ -7936,7 +8010,7 @@ const AdminPage = (function () {
   }
 
   /**
-   * View image in a larger modal
+   * View image in a larger modal.
    */
   function viewImage(imageUrl, imageName) {
     if (!imageUrl || imageUrl === '#') {
@@ -7944,13 +8018,14 @@ const AdminPage = (function () {
       return;
     }
 
+    const safeName = (imageName || 'Image').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const fallbackSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect fill='%23f3f4f6' width='400' height='300'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-size='18'%3EImage not available%3C/text%3E%3C/svg%3E";
+
     Swal.fire({
-      title: imageName || 'Image Viewer',
+      title: safeName,
       html: `
         <div style="text-align: center;">
-          <img src="${imageUrl}" alt="${imageName || 'Image'}" 
-               style="max-width: 100%; max-height: 70vh; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-               onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27400%27 height=%27300%27%3E%3Crect fill=%27%23f3f4f6%27 width=%27400%27 height=%27300%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 text-anchor=%27middle%27 dy=%27.3em%27 fill=%27%239ca3af%27 font-size=%2718%27%3EImage not available%3C/text%3E%3C/svg%3E';">
+          <img id="viewImageImg" src="" alt="${safeName}" style="max-width: 100%; max-height: 70vh; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" draggable="false" />
         </div>
       `,
       width: '90%',
@@ -7962,14 +8037,18 @@ const AdminPage = (function () {
       showCancelButton: true,
       cancelButtonText: 'Close',
       footer: `
-        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
-          <a href="${imageUrl}" target="_blank" style="color: #059669; text-decoration: none; font-weight: 500;">
+        <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
+          <a href="${imageUrl.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" style="color: #059669; text-decoration: none; font-weight: 500;">
             View Full Size in New Tab →
           </a>
         </div>
       `,
       didOpen: () => {
-        // Add click handler to open in new tab
+        const img = document.getElementById('viewImageImg');
+        if (img) {
+          img.src = imageUrl;
+          img.onerror = function () { this.src = fallbackSvg; };
+        }
         const confirmBtn = document.querySelector('.swal2-confirm');
         if (confirmBtn) {
           confirmBtn.addEventListener('click', () => {
