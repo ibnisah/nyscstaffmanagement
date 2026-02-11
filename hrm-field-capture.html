@@ -43,16 +43,8 @@
   <main class="page page-field-capture">
     <div id="stepError" class="step">
       <section class="card">
-        <h1>Invalid Link</h1>
-        <p id="errorMessage">This registration link is invalid or has expired. Please use the QR code provided at your formation.</p>
-      </section>
-    </div>
-
-    <div id="stepLocation" class="step">
-      <section class="card">
-        <h1>Verifying location</h1>
-        <p>Please allow browser access to your location. You must be at the designated formation site to continue.</p>
-        <div id="locationStatus" class="info info-muted">Requesting location...</div>
+        <h1>Error</h1>
+        <p id="errorMessage">Something went wrong. Please try again.</p>
       </section>
     </div>
 
@@ -330,20 +322,14 @@
   </main>
 
   <script src="js/nigeria-data.js"></script>
-  <script src="js/geo.js"></script>
   <script src="js/api.js"></script>
   <script>
 (function () {
-  var formationId = '';
-  var token = '';
+  var formationId = 'FIELD_CAPTURE'; // Default for nationwide field capture (no formation restriction)
   var sessionToken = '';
-  var formationName = '';
 
   function parseUrlParams() {
-    var params = new URLSearchParams(window.location.search);
-    formationId = (params.get('formationId') || '').trim();
-    token = (params.get('token') || '').trim();
-    return formationId && token;
+    return true; // Single universal URL; no formation/token required
   }
 
   function showStep(id) {
@@ -752,48 +738,6 @@
     galleryInput.addEventListener('change', function (e) { handleFullPhotoSelection(false, e); });
   })();
 
-  function doLocationStep() {
-    showStep('stepLocation');
-    var statusEl = document.getElementById('locationStatus');
-    function fail(msg) {
-      statusEl.textContent = msg || 'Location could not be verified.';
-      statusEl.className = 'info info-warning';
-      setError(msg || 'You must be at the designated formation site to register.');
-    }
-    Geo.getLocation({ requiredAccuracyMeters: 100 }).then(function (loc) {
-      statusEl.textContent = 'Verifying with server...';
-      Api.call('verifyFieldCaptureLocation', {
-        formationId: formationId,
-        token: token,
-        latitude: loc.lat,
-        longitude: loc.lng,
-        accuracy: loc.accuracy
-      }).then(function (res) {
-        if (res && res.success) {
-          statusEl.textContent = 'Location verified.';
-          statusEl.className = 'info';
-          showStep('stepPhone');
-        } else {
-          fail(res && res.message ? res.message : 'Location not allowed.');
-        }
-      }).catch(function (err) {
-        var msg = (err && err.message) ? err.message : 'Verification failed.';
-        if (err && err.reason === 'LOCATION_OUTSIDE') {
-          msg = 'You are outside the allowed area. Please be at the designated formation site.';
-        } else if (err && err.reason === 'EXPIRED_TOKEN' || err && err.reason === 'INVALID_TOKEN') {
-          msg = 'This link is invalid or has expired.';
-        }
-        fail(msg);
-      });
-    }).catch(function (err) {
-      var msg = (err && err.message) ? err.message : 'Location access denied or unavailable.';
-      if (err && err.code === 'DENIED') {
-        msg = 'Location permission was denied. Please allow location access and try again.';
-      }
-      fail(msg);
-    });
-  }
-
   document.getElementById('phoneForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var phone = (document.getElementById('phone').value || '').trim();
@@ -803,10 +747,11 @@
       allowOutsideClick: false,
       didOpen: function () { Swal.showLoading(); }
     });
-    Api.call('verifyInvitedPhoneNumber', { phone: phone, formationId: formationId })
+    Api.call('verifyInvitedPhoneNumber', { phone: phone })
       .then(function (res) {
         if (res && res.success && res.data && res.data.sessionToken) {
           sessionToken = res.data.sessionToken;
+          formationId = (res.data.formationId && res.data.formationId.trim()) ? res.data.formationId : 'FIELD_CAPTURE';
           Swal.fire({
             title: 'Loading form...',
             allowOutsideClick: false,
@@ -838,7 +783,7 @@
           Swal.fire({
             icon: 'error',
             title: 'Cannot continue',
-            text: (res && res.message) ? res.message : 'This phone number is not in the invite list for this formation.'
+            text: (res && res.message) ? res.message : 'This phone number is not in the invite list or has already registered.'
           });
         }
       })
@@ -1069,10 +1014,10 @@
 
   window.addEventListener('DOMContentLoaded', function () {
     if (!parseUrlParams()) {
-      setError('Missing formation or token. Please use the QR code provided at your formation.');
+      setError('Unable to load. Please try again.');
       return;
     }
-    doLocationStep();
+    showStep('stepPhone');
   });
 })();
   </script>
