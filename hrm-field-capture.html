@@ -98,18 +98,18 @@
           </div>
           <div class="field">
             <label for="fcSubUnit">Department / Sub-unit (optional – add when posted)</label>
-            <select id="fcSubUnit">
+            <select id="fcSubUnit" disabled aria-label="Read-only in field capture">
               <option value="">-- None yet / Add later --</option>
             </select>
           </div>
           <div class="row2">
             <div class="field">
               <label for="fcFileNumber">File number</label>
-              <input type="text" id="fcFileNumber" />
+              <input type="text" id="fcFileNumber" disabled aria-label="Read-only in field capture" />
             </div>
             <div class="field">
               <label for="fcIppis">IPPIS number</label>
-              <input type="text" id="fcIppis" />
+              <input type="text" id="fcIppis" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
           <div class="row2">
@@ -134,12 +134,12 @@
             </div>
             <div class="field">
               <label for="fcPresentAppointment">Date of present appointment</label>
-              <input type="date" id="fcPresentAppointment" />
+              <input type="date" id="fcPresentAppointment" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
           <div class="field">
             <label for="fcConfirmationDate">Confirmation date</label>
-            <input type="date" id="fcConfirmationDate" />
+            <input type="date" id="fcConfirmationDate" disabled aria-label="Read-only in field capture" />
           </div>
           <div class="row2">
             <div class="field">
@@ -207,12 +207,12 @@
           </div>
           <div class="row2">
             <div class="field">
-              <label for="fcPfa">PFA</label>
-              <input type="text" id="fcPfa" />
+              <label for="fcPfa">Pension Fund Administrator (PFA)</label>
+              <input type="text" id="fcPfa" disabled aria-label="Read-only in field capture" />
             </div>
             <div class="field">
-              <label for="fcPfaPin">PFA PIN</label>
-              <input type="text" id="fcPfaPin" />
+              <label for="fcPfaPin">PFA PIN No</label>
+              <input type="text" id="fcPfaPin" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
 
@@ -258,13 +258,13 @@
             <textarea id="fcPresentAddress" rows="2"></textarea>
           </div>
           <div class="field">
-            <label for="fcStateSecretariat">State secretariat (appointment letter)</label>
+            <label for="fcStateSecretariat">State Secretariat to Collect Posting Letter</label>
             <select id="fcStateSecretariat">
               <option value="">-- Select --</option>
             </select>
           </div>
           <div class="field">
-            <label>Profile picture (optional, max 5MB)</label>
+            <label>Passport / profile picture (required, max 5MB)</label>
             <input type="file" id="fcProfilePhotoCamera" accept="image/*" capture="environment" style="display: none;" />
             <input type="file" id="fcProfilePhotoGallery" accept="image/*" style="display: none;" />
             <div class="photo-options-row">
@@ -278,7 +278,7 @@
               </div>
             </div>
           </div>
-          <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">Submit registration</button>
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">Continue</button>
         </form>
       </section>
     </div>
@@ -301,11 +301,21 @@
             </div>
           </div>
         </div>
-        <p style="margin-bottom: 1rem;">Optional: You can upload additional documents (JPG/JPEG images, max 2MB each).</p>
+        <p style="margin-bottom: 0.5rem;">Optional: Add documents (JPG/JPEG, max 8MB each).</p>
+        <input type="file" id="fcDocCamera" accept="image/*" capture="environment" style="display: none;" />
+        <input type="file" id="fcDocGallery" accept="image/*" style="display: none;" />
+        <div class="photo-options-row" style="margin-bottom: 0.5rem;">
+          <div class="photo-option">
+            <button type="button" id="fcDocTakeBtn" class="btn btn-secondary">Take Photo</button>
+            <div id="fcDocCameraName" class="photo-filename"></div>
+          </div>
+          <div class="photo-option">
+            <button type="button" id="fcDocGalleryBtn" class="btn btn-secondary">Upload from Gallery</button>
+            <div id="fcDocGalleryName" class="photo-filename"></div>
+          </div>
+        </div>
         <div id="fcDocList" style="margin: 1rem 0; min-height: 2rem;"></div>
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-          <input type="file" id="fcDocFileInput" accept="image/jpeg,image/jpg,.jpg,.jpeg" style="display: none;" />
-          <button type="button" id="fcDocUploadBtn" class="btn btn-secondary">Add document</button>
           <button type="button" id="fcDocFinishBtn" class="btn btn-primary">Finish</button>
         </div>
       </section>
@@ -553,8 +563,93 @@
     });
   }
 
+  var DOC_MAX_SIZE = 8 * 1024 * 1024; // 8MB for documents
+  function validateDocumentFile(file) {
+    if (!file) return { ok: false, message: 'Please select an image.' };
+    var mime = (file.type || '').toLowerCase();
+    if (mime !== 'image/jpeg' && mime !== 'image/jpg') {
+      return { ok: false, message: 'Only JPG/JPEG images are allowed.' };
+    }
+    if (file.size > DOC_MAX_SIZE) {
+      return { ok: false, message: 'File is too large. Maximum size is 8MB.' };
+    }
+    return { ok: true };
+  }
+  /** Compress document image: max width 1200px, quality 0.75, JPEG. */
+  function compressImageDocument(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var maxW = 1200;
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        if (w > maxW) {
+          var r = maxW / w;
+          w = maxW;
+          h = Math.round(h * r);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) {
+          if (!blob) { reject(new Error('Failed to create image')); return; }
+          resolve(blob);
+        }, 'image/jpeg', 0.75);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('Image could not be loaded.'));
+      };
+      img.src = url;
+    });
+  }
+  function buildDocumentPayload(file) {
+    var validation = validateDocumentFile(file);
+    if (!validation.ok) return Promise.reject(new Error(validation.message));
+    return compressImageDocument(file).then(function (blob) {
+      return blobToBase64(blob).then(function (base64Data) {
+        var baseName = (file.name && file.name.replace(/\.[^.]+$/, '')) ? file.name.replace(/\.[^.]+$/, '') : 'document';
+        return {
+          fileName: baseName + '.jpg',
+          mimeType: 'image/jpeg',
+          fileSize: blob.size,
+          base64Data: base64Data
+        };
+      });
+    });
+  }
+
   var profilePhotoSource = null; // 'camera' | 'gallery' | null
+  var profilePhotoPayload = null; // { fileName, mimeType, fileSize, base64Data } – built on selection
   var fullPhotoPayload = null;   // { fileName, mimeType, fileSize, base64Data } for full-length photo
+  var fcFormData = null;        // staff object stored when Continue clicked (unified flow)
+  var documentPayloads = [];    // array of { fileName, mimeType, fileSize, base64Data } – uploaded on Finish
+
+  /** Reusable: handle image selection for profile/full/document. options: { clearOther, validate, buildPayload, onPayload, onFile, title }. */
+  function handleImageSelection(event, options) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    var opt = options || {};
+    if (opt.clearOther) opt.clearOther();
+    if (opt.validate) {
+      var v = opt.validate(file);
+      if (!v.ok) {
+        Swal.fire({ icon: 'error', title: opt.title || 'Invalid', text: v.message });
+        return;
+      }
+    }
+    if (opt.buildPayload && opt.onPayload) {
+      opt.buildPayload(file).then(opt.onPayload).catch(function (err) {
+        Swal.fire({ icon: 'error', title: opt.title || 'Error', text: (err && err.message) || 'Failed to process image.' });
+      });
+    } else if (opt.onFile) {
+      opt.onFile(file);
+    }
+  }
 
   (function setupProfilePhotoTwoInputs() {
     var cameraInput = document.getElementById('fcProfilePhotoCamera');
@@ -574,6 +669,7 @@
       if (activeSource !== 'camera') cameraInput.value = '';
       if (activeSource !== 'gallery') galleryInput.value = '';
       profilePhotoSource = null;
+      profilePhotoPayload = null;
     }
 
     function handlePhotoSelection(isCamera, event) {
@@ -594,6 +690,13 @@
       profilePhotoSource = isCamera ? 'camera' : 'gallery';
       if (isCamera && cameraFileNameEl) cameraFileNameEl.textContent = file.name;
       if (!isCamera && galleryFileNameEl) galleryFileNameEl.textContent = file.name;
+      profilePhotoPayload = null;
+      resizeAndCompressProfilePhoto(file).then(function (payload) {
+        profilePhotoPayload = payload;
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'Profile photo', text: (err && err.message) || 'Failed to process image.' });
+        profilePhotoPayload = null;
+      });
     }
 
     cameraInput.addEventListener('change', function (e) { handlePhotoSelection(true, e); });
@@ -794,69 +897,14 @@
       Swal.fire({ icon: 'warning', title: 'Required', text: 'Surname is required.' });
       return;
     }
-    Swal.fire({ title: 'Submitting...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
-    Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: staff })
-      .then(function (res) {
-        if (!res || !res.success || !res.data) {
-          Swal.fire({ icon: 'error', title: 'Error', text: (res && res.message) ? res.message : 'Registration failed.' });
-          return;
-        }
-        var employeeId = res.data.employeeId;
-        var profileUploadToken = res.data.profileUploadToken;
-        var documentUploadToken = res.data.documentUploadToken;
-        var fullPhotoUploadToken = res.data.fullPhotoUploadToken || '';
-        var subUnitIdRes = (res.data && res.data.subUnitId) || staff.subUnitId || '';
-        var cameraInput = document.getElementById('fcProfilePhotoCamera');
-        var galleryInput = document.getElementById('fcProfilePhotoGallery');
-        var file = (cameraInput && cameraInput.files && cameraInput.files[0]) || (galleryInput && galleryInput.files && galleryInput.files[0]);
-        if (profileUploadToken && file) {
-          var validation = validateProfilePhotoFile(file);
-          if (!validation.ok) {
-            Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
-            Swal.close();
-            return;
-          }
-          resizeAndCompressProfilePhoto(file).then(function (profilePhotoPayload) {
-            return Api.call('uploadStaffProfilePictureFieldCapture', {
-              profileUploadToken: profileUploadToken,
-              employeeId: employeeId,
-              formationId: formationId,
-              subUnitId: (res.data && res.data.subUnitId) || staff.subUnitId || '',
-              fileData: profilePhotoPayload.base64Data,
-              fileName: profilePhotoPayload.fileName,
-              mimeType: profilePhotoPayload.mimeType,
-              fileSize: profilePhotoPayload.fileSize
-            });
-          }).then(function (uploadRes) {
-            if (uploadRes && uploadRes.success) {
-              goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
-            } else {
-            Swal.fire({
-              icon: 'warning',
-              title: 'Profile picture could not be uploaded',
-              text: (uploadRes && uploadRes.message) ? uploadRes.message : 'Your record was saved. You can add a profile picture later via the admin.'
-            });
-            goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
-            }
-          }).catch(function (err) {
-            Swal.fire({
-              icon: 'warning',
-              title: 'Profile picture upload failed',
-              text: (err && err.message) ? err.message : 'Your record was saved. You can add a profile picture later via the admin.'
-            });
-            goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
-          });
-        } else {
-          goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitIdRes);
-        }
-      })
-      .catch(function (err) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Registration failed',
-          text: (err && err.message) ? err.message : 'Could not create staff record. Please try again.'
-        });
-      });
+    if (!profilePhotoPayload) {
+      Swal.fire({ icon: 'warning', title: 'Required', text: 'Please add a passport / profile picture before continuing.' });
+      return;
+    }
+    fcFormData = staff;
+    documentPayloads = [];
+    renderDocList();
+    showStep('stepDocuments');
   });
 
   function showSuccess() {
@@ -868,92 +916,66 @@
     }, 2000);
   }
 
-  var fcDocState = { employeeId: '', documentUploadToken: '', fullPhotoUploadToken: '', subUnitId: '', uploaded: [] };
-
-  function goToDocumentsStep(employeeId, documentUploadToken, fullPhotoUploadToken, subUnitId) {
-    Swal.close();
-    fcDocState = {
-      employeeId: employeeId || '',
-      documentUploadToken: documentUploadToken || '',
-      fullPhotoUploadToken: fullPhotoUploadToken || '',
-      subUnitId: subUnitId || '',
-      uploaded: []
-    };
-    document.getElementById('fcDocList').innerHTML = '<em style="color: #6b7280;">No documents uploaded yet.</em>';
-    showStep('stepDocuments');
-  }
-
-  function fileToBase64(file) {
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () { resolve(reader.result); };
-      reader.onerror = function () { reject(new Error('Failed to read file')); };
-      reader.readAsDataURL(file);
-    });
-  }
-
   function renderDocList() {
     var el = document.getElementById('fcDocList');
     if (!el) return;
-    if (fcDocState.uploaded.length === 0) {
-      el.innerHTML = '<em style="color: #6b7280;">No documents uploaded yet.</em>';
+    if (documentPayloads.length === 0) {
+      el.innerHTML = '<em style="color: #6b7280;">No documents added yet.</em>';
     } else {
       el.innerHTML = '<ul style="margin: 0; padding-left: 1.25rem;">' +
-        fcDocState.uploaded.map(function (d) { return '<li>' + (d.fileName || 'Document') + '</li>'; }).join('') +
+        documentPayloads.map(function (d) { return '<li>' + (d.fileName || 'Document') + '</li>'; }).join('') +
         '</ul>';
     }
   }
 
-  function handleDocUpload(file) {
-    if (!fcDocState.documentUploadToken || !fcDocState.employeeId) return;
-    if (fcDocState.uploaded.length >= 10) {
-      Swal.fire({ icon: 'warning', title: 'Limit reached', text: 'Maximum 10 documents per staff.' });
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      Swal.fire({ icon: 'warning', title: 'File too large', text: 'Each document must be 2MB or less.' });
-      return;
-    }
-    var mime = (file.type || '').toLowerCase();
-    if (mime !== 'image/jpeg' && mime !== 'image/jpg') {
-      Swal.fire({ icon: 'warning', title: 'Invalid type', text: 'Only JPG/JPEG images are allowed.' });
-      return;
-    }
-    Swal.fire({ title: 'Uploading...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
-    fileToBase64(file).then(function (base64) {
-      return Api.call('uploadStaffDocumentFieldCapture', {
-        documentUploadToken: fcDocState.documentUploadToken,
-        employeeId: fcDocState.employeeId,
-        formationId: formationId,
-        subUnitId: fcDocState.subUnitId,
-        fileData: base64,
-        fileName: file.name || 'document.jpg',
-        mimeType: file.type || 'image/jpeg',
-        fileSize: file.size
-      });
-    }).then(function (res) {
-      Swal.close();
-      if (res && res.success) {
-        fcDocState.uploaded.push({ fileName: file.name || 'document.jpg' });
-        renderDocList();
+  (function setupDocumentTwoInputs() {
+    var cameraInput = document.getElementById('fcDocCamera');
+    var galleryInput = document.getElementById('fcDocGallery');
+    var takeBtn = document.getElementById('fcDocTakeBtn');
+    var galleryBtn = document.getElementById('fcDocGalleryBtn');
+    var cameraNameEl = document.getElementById('fcDocCameraName');
+    var galleryNameEl = document.getElementById('fcDocGalleryName');
+    if (!cameraInput || !galleryInput || !takeBtn || !galleryBtn) return;
+
+    takeBtn.addEventListener('click', function () { cameraInput.click(); });
+    galleryBtn.addEventListener('click', function () { galleryInput.click(); });
+
+    function clearOtherDoc(isCamera) {
+      if (isCamera) {
+        galleryInput.value = '';
+        if (galleryNameEl) galleryNameEl.textContent = '';
       } else {
-        Swal.fire({ icon: 'error', title: 'Upload failed', text: (res && res.message) ? res.message : 'Could not upload document.' });
+        cameraInput.value = '';
+        if (cameraNameEl) cameraNameEl.textContent = '';
       }
-    }).catch(function (err) {
-      Swal.close();
-      Swal.fire({ icon: 'error', title: 'Upload failed', text: (err && err.message) ? err.message : 'Could not upload document.' });
-    });
-  }
+    }
 
-  document.getElementById('fcDocUploadBtn').addEventListener('click', function () {
-    document.getElementById('fcDocFileInput').click();
-  });
+    function handleDocSelection(isCamera, event) {
+      var file = event.target.files && event.target.files[0];
+      clearOtherDoc(isCamera);
+      if (!file) return;
+      if (documentPayloads.length >= 10) {
+        Swal.fire({ icon: 'warning', title: 'Limit reached', text: 'Maximum 10 documents.' });
+        return;
+      }
+      var validation = validateDocumentFile(file);
+      if (!validation.ok) {
+        Swal.fire({ icon: 'error', title: 'Invalid document', text: validation.message });
+        return;
+      }
+      if (isCamera && cameraNameEl) cameraNameEl.textContent = file.name;
+      if (!isCamera && galleryNameEl) galleryNameEl.textContent = file.name;
+      buildDocumentPayload(file).then(function (payload) {
+        documentPayloads.push(payload);
+        renderDocList();
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'Document', text: (err && err.message) || 'Failed to process image.' });
+      });
+    }
 
-  document.getElementById('fcDocFileInput').addEventListener('change', function (e) {
-    var file = e.target && e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (file) handleDocUpload(file);
-  });
+    cameraInput.addEventListener('change', function (e) { handleDocSelection(true, e); });
+    galleryInput.addEventListener('change', function (e) { handleDocSelection(false, e); });
+  })();
 
   document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
     if (!fullPhotoPayload) {
@@ -964,38 +986,85 @@
       });
       return;
     }
-    if (!fcDocState.fullPhotoUploadToken || !fcDocState.employeeId) {
+    if (!fcFormData || !sessionToken) {
       Swal.fire({ icon: 'error', title: 'Error', text: 'Session expired. Please start again from the QR link.' });
       return;
     }
-    Swal.fire({ title: 'Uploading...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
-    Api.call('uploadStaffFullPictureFieldCapture', {
-      fullPhotoUploadToken: fcDocState.fullPhotoUploadToken,
-      employeeId: fcDocState.employeeId,
-      formationId: formationId,
-      subUnitId: fcDocState.subUnitId || '',
-      fileData: fullPhotoPayload.base64Data,
-      fileName: fullPhotoPayload.fileName,
-      mimeType: fullPhotoPayload.mimeType,
-      fileSize: fullPhotoPayload.fileSize
-    }).then(function (uploadRes) {
-      if (uploadRes && uploadRes.success) {
+    Swal.fire({ title: 'Submitting...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+
+    function runUnifiedSubmission() {
+      return Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: fcFormData })
+        .then(function (res) {
+          if (!res || !res.success || !res.data) {
+            return Promise.reject(new Error((res && res.message) ? res.message : 'Registration failed.'));
+          }
+          var employeeId = res.data.employeeId;
+          var profileUploadToken = res.data.profileUploadToken;
+          var documentUploadToken = res.data.documentUploadToken;
+          var fullPhotoUploadToken = res.data.fullPhotoUploadToken || '';
+          var subUnitId = (res.data && res.data.subUnitId) || fcFormData.subUnitId || '';
+          var chain = Promise.resolve();
+          if (profilePhotoPayload && profileUploadToken) {
+            chain = chain.then(function () {
+              return Api.call('uploadStaffProfilePictureFieldCapture', {
+                profileUploadToken: profileUploadToken,
+                employeeId: employeeId,
+                formationId: formationId,
+                subUnitId: subUnitId,
+                fileData: profilePhotoPayload.base64Data,
+                fileName: profilePhotoPayload.fileName,
+                mimeType: profilePhotoPayload.mimeType,
+                fileSize: profilePhotoPayload.fileSize
+              });
+            });
+          }
+          if (fullPhotoPayload && fullPhotoUploadToken) {
+            chain = chain.then(function () {
+              return Api.call('uploadStaffFullPictureFieldCapture', {
+                fullPhotoUploadToken: fullPhotoUploadToken,
+                employeeId: employeeId,
+                formationId: formationId,
+                subUnitId: subUnitId || '',
+                fileData: fullPhotoPayload.base64Data,
+                fileName: fullPhotoPayload.fileName,
+                mimeType: fullPhotoPayload.mimeType,
+                fileSize: fullPhotoPayload.fileSize
+              });
+            });
+          }
+          (documentPayloads || []).forEach(function (payload) {
+            chain = chain.then(function () {
+              return Api.call('uploadStaffDocumentFieldCapture', {
+                documentUploadToken: documentUploadToken,
+                employeeId: employeeId,
+                formationId: formationId,
+                subUnitId: subUnitId,
+                fileData: payload.base64Data,
+                fileName: payload.fileName,
+                mimeType: payload.mimeType,
+                fileSize: payload.fileSize
+              });
+            });
+          });
+          return chain;
+        });
+    }
+
+    runUnifiedSubmission()
+      .then(function () {
+        profilePhotoPayload = null;
         fullPhotoPayload = null;
+        documentPayloads = [];
+        fcFormData = null;
         showSuccess();
-      } else {
+      })
+      .catch(function (err) {
         Swal.fire({
           icon: 'error',
-          title: 'Full photo upload failed',
-          text: (uploadRes && uploadRes.message) ? uploadRes.message : 'Could not upload full length photograph. Please try again.'
+          title: 'Submission failed',
+          text: (err && err.message) ? err.message : 'Could not complete registration. Please try again.'
         });
-      }
-    }).catch(function (err) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Full photo upload failed',
-        text: (err && err.message) ? err.message : 'Could not upload full length photograph. Please try again.'
       });
-    });
   });
 
   window.addEventListener('DOMContentLoaded', function () {

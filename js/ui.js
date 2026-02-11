@@ -3892,7 +3892,7 @@ const AdminPage = (function () {
               <textarea id="swalStaffPresentResidentialAddress" class="swal2-textarea" placeholder="Present Residential Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${(step2InitialData.presentResidentialAddress || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
             </div>
             <div style="grid-column: 1 / -1;">
-              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State Secretariat to Collect Appointment Letter</label>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State Secretariat to Collect Posting Letter</label>
               <select id="swalStaffStateSecretariat" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
                 <option value="">-- Select State Secretariat --</option>
                 ${(window.NIGERIA_STATE_SECRETARIATS || []).map(ss => `<option value="${(ss || '').replace(/"/g, '&quot;')}" ${(step2InitialData.stateSecretariatAppointmentLetter || '') === ss ? 'selected' : ''}>${String(ss || '').replace(/</g, '&lt;')}</option>`).join('')}
@@ -3987,7 +3987,7 @@ const AdminPage = (function () {
           <div><strong>Present Residential State:</strong> ${na(step2Data.presentResidentialState)}</div>
           <div><strong>Present Residential City:</strong> ${na(step2Data.presentResidentialCity)}</div>
           <div style="grid-column: 1 / -1;"><strong>Present Residential Address:</strong> ${na(step2Data.presentResidentialAddress)}</div>
-          <div style="grid-column: 1 / -1;"><strong>State Secretariat to Collect Appointment Letter:</strong> ${na(step2Data.stateSecretariatAppointmentLetter)}</div>
+          <div style="grid-column: 1 / -1;"><strong>State Secretariat to Collect Posting Letter:</strong> ${na(step2Data.stateSecretariatAppointmentLetter)}</div>
           ${profilePictureData ? '<div style="grid-column: 1 / -1;"><strong>Profile Picture:</strong> Yes (will be uploaded)</div>' : ''}
         </div>
       `;
@@ -4888,7 +4888,7 @@ const AdminPage = (function () {
               <div><strong>Present Residential State:</strong> ${staff.presentResidentialState || 'N/A'}</div>
               <div><strong>Present Residential City:</strong> ${staff.presentResidentialCity || 'N/A'}</div>
               <div style="grid-column: 1 / -1;"><strong>Present Residential Address:</strong> ${staff.presentResidentialAddress || 'N/A'}</div>
-              <div style="grid-column: 1 / -1;"><strong>State Secretariat to Collect Appointment Letter:</strong> ${staff.stateSecretariatAppointmentLetter || 'N/A'}</div>
+              <div style="grid-column: 1 / -1;"><strong>State Secretariat to Collect Posting Letter:</strong> ${staff.stateSecretariatAppointmentLetter || 'N/A'}</div>
             </div>
 
             <div style="margin-bottom: 1.5rem;">
@@ -5266,7 +5266,7 @@ const AdminPage = (function () {
           ${row('Present Residential State', staff.presentResidentialState)}
           ${row('Present Residential City', staff.presentResidentialCity)}
           ${row('Present Residential Address', staff.presentResidentialAddress)}
-          ${row('State Secretariat to Collect Appointment Letter', staff.stateSecretariatAppointmentLetter)}
+          ${row('State Secretariat to Collect Posting Letter', staff.stateSecretariatAppointmentLetter)}
           ${row('Status', staff.status)}
         </table>`;
 
@@ -5629,7 +5629,7 @@ const AdminPage = (function () {
               <textarea id="swalEditPresentResidentialAddress" class="swal2-textarea" placeholder="Present Residential Address" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; min-height: 80px;">${staff.presentResidentialAddress || ''}</textarea>
             </div>
             <div style="grid-column: 1 / -1;">
-              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State Secretariat to Collect Appointment Letter</label>
+              <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #333;">State Secretariat to Collect Posting Letter</label>
               <select id="swalEditStateSecretariat" class="swal2-select" style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem;">
                 <option value="">-- Select State Secretariat --</option>
                 ${(window.NIGERIA_STATE_SECRETARIATS || []).map(ss => `<option value="${(ss || '').replace(/"/g, '&quot;')}" ${(staff.stateSecretariatAppointmentLetter || '') === ss ? 'selected' : ''}>${String(ss || '').replace(/</g, '&lt;')}</option>`).join('')}

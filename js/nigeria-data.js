@@ -59,7 +59,7 @@
     'Zamfara': ['Anka', 'Bakura', 'Birnin Magaji/Kiyaw', 'Bukkuyum', 'Bungudu', 'Chafe', 'Gummi', 'Gusau', 'Kaura Namoda', 'Maradun', 'Maru', 'Shinkafi', 'Talata Mafara', 'Tsafe', 'Zurmi']
   };
 
-  // State Secretariats (for "State Secretariat to Collect Appointment Letter")
+  // State Secretariats (for "State Secretariat to Collect Posting Letter")
   var NIGERIA_STATE_SECRETARIATS = [
     'Abia State Secretariat',
     'Adamawa State Secretariat',
