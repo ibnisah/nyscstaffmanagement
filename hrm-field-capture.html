@@ -23,6 +23,12 @@
     .photo-option { flex: 1 1 160px; min-width: 0; }
     .photo-option button { width: 100%; }
     .photo-filename { word-break: break-word; min-height: 2rem; font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+    .field-capture-form input.fc-readonly,
+    .field-capture-form select.fc-readonly {
+      background-color: #d1d5db;
+      color: #4b5563;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -90,18 +96,18 @@
           </div>
           <div class="field">
             <label for="fcSubUnit">Department / Sub-unit (optional – add when posted)</label>
-            <select id="fcSubUnit" disabled aria-label="Read-only in field capture">
+            <select id="fcSubUnit" class="fc-readonly" disabled aria-label="Read-only in field capture">
               <option value="">-- None yet / Add later --</option>
             </select>
           </div>
           <div class="row2">
             <div class="field">
               <label for="fcFileNumber">File number</label>
-              <input type="text" id="fcFileNumber" disabled aria-label="Read-only in field capture" />
+              <input type="text" id="fcFileNumber" class="fc-readonly" disabled aria-label="Read-only in field capture" />
             </div>
             <div class="field">
               <label for="fcIppis">IPPIS number</label>
-              <input type="text" id="fcIppis" disabled aria-label="Read-only in field capture" />
+              <input type="text" id="fcIppis" class="fc-readonly" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
           <div class="row2">
@@ -126,12 +132,12 @@
             </div>
             <div class="field">
               <label for="fcPresentAppointment">Date of present appointment</label>
-              <input type="date" id="fcPresentAppointment" disabled aria-label="Read-only in field capture" />
+              <input type="date" id="fcPresentAppointment" class="fc-readonly" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
           <div class="field">
             <label for="fcConfirmationDate">Confirmation date</label>
-            <input type="date" id="fcConfirmationDate" disabled aria-label="Read-only in field capture" />
+            <input type="date" id="fcConfirmationDate" class="fc-readonly" disabled aria-label="Read-only in field capture" />
           </div>
           <div class="row2">
             <div class="field">
@@ -199,12 +205,22 @@
           </div>
           <div class="row2">
             <div class="field">
+              <label for="fcPrimaryFrom">Primary from (year)</label>
+              <input type="number" id="fcPrimaryFrom" min="1950" max="2100" placeholder="e.g. 1995" />
+            </div>
+            <div class="field">
+              <label for="fcPrimaryTo">Primary to (year)</label>
+              <input type="number" id="fcPrimaryTo" min="1950" max="2100" placeholder="e.g. 2001" />
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
               <label for="fcPfa">Pension Fund Administrator (PFA)</label>
-              <input type="text" id="fcPfa" disabled aria-label="Read-only in field capture" />
+              <input type="text" id="fcPfa" class="fc-readonly" disabled aria-label="Read-only in field capture" />
             </div>
             <div class="field">
               <label for="fcPfaPin">PFA PIN No</label>
-              <input type="text" id="fcPfaPin" disabled aria-label="Read-only in field capture" />
+              <input type="text" id="fcPfaPin" class="fc-readonly" disabled aria-label="Read-only in field capture" />
             </div>
           </div>
 
@@ -827,6 +843,8 @@
       secondaryFromYear: (document.getElementById('fcSecondaryFrom').value || '').trim(),
       secondaryToYear: (document.getElementById('fcSecondaryTo').value || '').trim(),
       primarySchool: (document.getElementById('fcPrimarySchool').value || '').trim(),
+      primaryFromYear: (document.getElementById('fcPrimaryFrom').value || '').trim(),
+      primaryToYear: (document.getElementById('fcPrimaryTo').value || '').trim(),
       pfa: (document.getElementById('fcPfa').value || '').trim(),
       pfaPinNo: (document.getElementById('fcPfaPin').value || '').trim(),
       maritalStatus: (document.getElementById('fcMaritalStatus').value || '').trim(),
@@ -1018,6 +1036,13 @@
       return;
     }
     showStep('stepPhone');
+    document.addEventListener('click', function (e) {
+      var el = e.target.closest('.fc-readonly');
+      if (el) {
+        e.preventDefault();
+        Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'You cannot fill this now!', showConfirmButton: false, timer: 2000 });
+      }
+    });
   });
 })();
   </script>
