@@ -4919,6 +4919,8 @@ const AdminPage = (function () {
               <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                 ${(isHrmAdminRole(adminRole) || adminRole === 'SUPER_ADMIN') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
                 ${canEdit ? `<button id="editStaffBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Edit Record</button>` : ''}
+                ${canEdit ? `<button id="uploadProfilePhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Profile Picture</button>` : ''}
+                ${canEdit ? `<button id="uploadFullPhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Full Photo</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
               </div>
@@ -5076,6 +5078,84 @@ const AdminPage = (function () {
               await uploadEmployeeDocument(employeeId, staff.formationId || currentFormationId || '', staff.subUnitId || '');
               // Reload profile after upload
               await showFullStaffProfile(employeeId, staff.formationId || '');
+            });
+          }
+
+          const uploadProfilePhotoBtn = document.getElementById('uploadProfilePhotoBtn');
+          if (uploadProfilePhotoBtn) {
+            uploadProfilePhotoBtn.addEventListener('click', () => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/jpeg,image/png,image/webp,image/jpg';
+              input.onchange = async (e) => {
+                const file = e.target && e.target.files && e.target.files[0];
+                if (!file) return;
+                try {
+                  const payload = await resizeAndCompressProfilePhoto(file);
+                  if (!payload) return;
+                  UI.showLoading('Uploading', 'Uploading profile picture...');
+                  await Api.call('uploadStaffProfilePicture', {
+                    key: adminKey,
+                    employeeId,
+                    formationId: staff.formationId || currentFormationId || '',
+                    subUnitId: staff.subUnitId || '',
+                    fileData: payload.base64,
+                    fileName: payload.fileName,
+                    mimeType: payload.mimeType,
+                    fileSize: payload.fileSize
+                  });
+                  UI.closeLoading();
+                  await UI.showSuccess('Done', 'Profile picture updated.');
+                  Swal.close();
+                  await showFullStaffProfile(employeeId, staff.formationId || '');
+                } catch (err) {
+                  UI.closeLoading();
+                  UI.showError('Upload failed', err && err.message ? err.message : 'Could not upload profile picture.');
+                }
+              };
+              input.click();
+            });
+          }
+
+          const uploadFullPhotoBtn = document.getElementById('uploadFullPhotoBtn');
+          if (uploadFullPhotoBtn) {
+            uploadFullPhotoBtn.addEventListener('click', () => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/jpeg,image/png,image/webp,image/jpg';
+              input.onchange = async (e) => {
+                const file = e.target && e.target.files && e.target.files[0];
+                if (!file) return;
+                if (file.size > 8 * 1024 * 1024) {
+                  await UI.showError('File too large', 'Full photo must be 8MB or less.');
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = async () => {
+                  try {
+                    UI.showLoading('Uploading', 'Uploading full length photo...');
+                    await Api.call('uploadStaffFullPicture', {
+                      key: adminKey,
+                      employeeId,
+                      formationId: staff.formationId || currentFormationId || '',
+                      subUnitId: staff.subUnitId || '',
+                      fileData: reader.result,
+                      fileName: file.name || 'fullphoto.jpg',
+                      mimeType: file.type || 'image/jpeg',
+                      fileSize: file.size
+                    });
+                    UI.closeLoading();
+                    await UI.showSuccess('Done', 'Full length photo updated.');
+                    Swal.close();
+                    await showFullStaffProfile(employeeId, staff.formationId || '');
+                  } catch (err) {
+                    UI.closeLoading();
+                    UI.showError('Upload failed', err && err.message ? err.message : 'Could not upload full photo.');
+                  }
+                };
+                reader.readAsDataURL(file);
+              };
+              input.click();
             });
           }
 
@@ -7364,7 +7444,11 @@ const AdminPage = (function () {
       }
     } else if (view === 'fieldcapture') {
       container.innerHTML = `
-        <section class="card card-full-width">
+        <section class="card card-full-width" id="fcFieldCaptureSection">
+          <style>
+            .fc-collapsible-collapsed .fc-collapsible-body { display: none !important; }
+            .fc-collapsible-collapsed .fc-collapsible-icon { transform: rotate(-90deg); }
+          </style>
           <h2>Field Capture Management</h2>
           <p class="info info-muted">Invite staff to self-register at formation sites via QR code. Add invites below or bulk upload a CSV, then generate a QR link.</p>
           <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1rem 0;">
@@ -7395,15 +7479,183 @@ const AdminPage = (function () {
           </div>
           <input type="file" id="fcBulkFileInput" accept=".csv,text/csv" style="display: none;">
           <div id="fcGeneratedLink" class="info" style="display: none; word-break: break-all; padding: 0.75rem; background: #f0fdf4; border-radius: 6px;"></div>
-          <h3 style="margin-top: 1.5rem;">Invited candidates</h3>
-          <div id="fcCandidatesTable" class="table-wrapper">Loading...</div>
+          <div style="margin-top: 1.5rem; margin-bottom: 0.75rem;">
+            <label style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Filter by phone number</label>
+            <input type="text" id="fcPhoneSearch" placeholder="e.g. 08012345678" style="width: 100%; max-width: 280px; padding: 0.5rem 0.75rem; border: 1px solid #ccc; border-radius: 4px;">
+          </div>
+          <div class="fc-collapsible" id="fcInvitedSection" style="margin-top: 1rem;">
+            <button type="button" class="fc-collapsible-header" id="fcInvitedHeader" aria-expanded="true" style="width: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding: 0.6rem 2.5rem; background: var(--nysc-green, #059669); border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; color: #fff;"><span class="fc-collapsible-title" style="flex: 1; text-align: center;">Full list of Invited candidates</span><span class="fc-collapsible-icon" style="position: absolute; right: 0.75rem; transition: transform 0.2s; opacity: 0.95;">▼</span></button>
+            <div class="fc-collapsible-body" id="fcInvitedBody" style="padding: 0.5rem 0 0 0;">
+              <div id="fcInvitedTable" class="table-wrapper">Loading...</div>
+              <div id="fcInvitedPagination" class="fc-pagination" style="margin-top: 0.5rem;"></div>
+            </div>
+          </div>
+          <div class="fc-collapsible" id="fcRegisteredSection" style="margin-top: 1rem;">
+            <button type="button" class="fc-collapsible-header" id="fcRegisteredHeader" aria-expanded="true" style="width: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding: 0.6rem 2.5rem; background: var(--nysc-green, #059669); border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; color: #fff;"><span class="fc-collapsible-title" style="flex: 1; text-align: center;">Full list of Registered candidates</span><span class="fc-collapsible-icon" style="position: absolute; right: 0.75rem; transition: transform 0.2s; opacity: 0.95;">▼</span></button>
+            <div class="fc-collapsible-body" id="fcRegisteredBody" style="padding: 0.5rem 0 0 0;">
+              <div id="fcRegisteredTable" class="table-wrapper">Loading...</div>
+              <div id="fcRegisteredPagination" class="fc-pagination" style="margin-top: 0.5rem;"></div>
+            </div>
+          </div>
+          <div class="fc-collapsible" id="fcPendingSection" style="margin-top: 1rem;">
+            <button type="button" class="fc-collapsible-header" id="fcPendingHeader" aria-expanded="true" style="width: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding: 0.6rem 2.5rem; background: var(--nysc-green, #059669); border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; color: #fff;"><span class="fc-collapsible-title" style="flex: 1; text-align: center;">Full list of Pending (invited, not yet registered)</span><span class="fc-collapsible-icon" style="position: absolute; right: 0.75rem; transition: transform 0.2s; opacity: 0.95;">▼</span></button>
+            <div class="fc-collapsible-body" id="fcPendingBody" style="padding: 0.5rem 0 0 0;">
+              <div id="fcPendingTable" class="table-wrapper">Loading...</div>
+              <div id="fcPendingPagination" class="fc-pagination" style="margin-top: 0.5rem;"></div>
+            </div>
+          </div>
         </section>
       `;
       const formationSelect = document.getElementById('fcFormationSelect');
       const generateBtn = document.getElementById('fcGenerateLinkBtn');
       const expiryInput = document.getElementById('fcExpiryHours');
       const linkDiv = document.getElementById('fcGeneratedLink');
-      const candidatesTable = document.getElementById('fcCandidatesTable');
+      const invitedTable = document.getElementById('fcInvitedTable');
+      const registeredTable = document.getElementById('fcRegisteredTable');
+      const pendingTable = document.getElementById('fcPendingTable');
+      const invitedPagination = document.getElementById('fcInvitedPagination');
+      const registeredPagination = document.getElementById('fcRegisteredPagination');
+      const pendingPagination = document.getElementById('fcPendingPagination');
+      const phoneSearchInput = document.getElementById('fcPhoneSearch');
+
+      const FC_PAGE_SIZE = 10;
+      let fcCandidatesCache = [];
+      let fcPageInvited = 1;
+      let fcPageRegistered = 1;
+      let fcPagePending = 1;
+
+      function normalizePhoneForSearch(phone) {
+        return String(phone || '').replace(/\D/g, '');
+      }
+
+      function renderPagination(paginationEl, listKey, totalItems, currentPage) {
+        if (!paginationEl) return;
+        const totalPages = Math.max(1, Math.ceil(totalItems / FC_PAGE_SIZE));
+        const page = Math.max(1, Math.min(currentPage, totalPages));
+        if (totalItems === 0) {
+          paginationEl.innerHTML = '';
+          return;
+        }
+        const from = (page - 1) * FC_PAGE_SIZE + 1;
+        const to = Math.min(page * FC_PAGE_SIZE, totalItems);
+        let html = '<div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">';
+        html += '<span style="font-size: 0.9rem; color: #6b7280;">Showing ' + from + '\u2013' + to + ' of ' + totalItems + '</span>';
+        html += '<button type="button" class="btn btn-xs btn-secondary fc-page-btn" data-fc-list="' + listKey + '" data-fc-goto="prev" ' + (page <= 1 ? 'disabled' : '') + '>Previous</button>';
+        html += '<span style="font-size: 0.9rem;">Page ' + page + ' of ' + totalPages + '</span>';
+        html += '<button type="button" class="btn btn-xs btn-secondary fc-page-btn" data-fc-list="' + listKey + '" data-fc-goto="next" ' + (page >= totalPages ? 'disabled' : '') + '>Next</button>';
+        html += '</div>';
+        paginationEl.innerHTML = html;
+      }
+
+      function renderFieldCaptureTables() {
+        const searchTerm = (phoneSearchInput && phoneSearchInput.value) ? normalizePhoneForSearch(phoneSearchInput.value) : '';
+        const filtered = searchTerm
+          ? fcCandidatesCache.filter(function (r) { return normalizePhoneForSearch(r.phone).indexOf(searchTerm) !== -1; })
+          : fcCandidatesCache;
+        const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/\r?\n/g, ' ');
+        const pending = filtered.filter(function (r) { return String(r.status || '').toLowerCase() === 'pending'; });
+        const registered = filtered.filter(function (r) { return String(r.status || '').toLowerCase() === 'registered'; });
+
+        function bindRowActions(tableEl) {
+          if (!tableEl) return;
+          tableEl.querySelectorAll('.fc-edit-row').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              const row = btn.closest('tr');
+              if (row) openFcEditModal(row.dataset.phone, row.dataset.formationId, row);
+            });
+          });
+          tableEl.querySelectorAll('.fc-delete-row').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              const row = btn.closest('tr');
+              if (row) deleteFcRow(row.dataset.phone, row.dataset.formationId, row);
+            });
+          });
+        }
+
+        var totalInvited = filtered.length;
+        var totalRegistered = registered.length;
+        var totalPending = pending.length;
+        var totalPagesInvited = Math.max(1, Math.ceil(totalInvited / FC_PAGE_SIZE));
+        var totalPagesRegistered = Math.max(1, Math.ceil(totalRegistered / FC_PAGE_SIZE));
+        var totalPagesPending = Math.max(1, Math.ceil(totalPending / FC_PAGE_SIZE));
+        fcPageInvited = Math.max(1, Math.min(fcPageInvited, totalPagesInvited));
+        fcPageRegistered = Math.max(1, Math.min(fcPageRegistered, totalPagesRegistered));
+        fcPagePending = Math.max(1, Math.min(fcPagePending, totalPagesPending));
+        var pageInvited = fcPageInvited;
+        var pageRegistered = fcPageRegistered;
+        var pagePending = fcPagePending;
+        var startInvited = (pageInvited - 1) * FC_PAGE_SIZE;
+        var startRegistered = (pageRegistered - 1) * FC_PAGE_SIZE;
+        var startPending = (pagePending - 1) * FC_PAGE_SIZE;
+        var invitedSlice = filtered.slice(startInvited, startInvited + FC_PAGE_SIZE);
+        var registeredSlice = registered.slice(startRegistered, startRegistered + FC_PAGE_SIZE);
+        var pendingSlice = pending.slice(startPending, startPending + FC_PAGE_SIZE);
+
+        if (invitedTable) {
+          if (filtered.length === 0) {
+            invitedTable.innerHTML = '<p class="info info-muted">No invited candidates.' + (searchTerm ? ' Try a different phone filter.' : ' Use "Add invite" or "Bulk upload CSV" to add entries.') + '</p>';
+          } else {
+            let html = '<table class="data-table"><thead><tr><th>Phone</th><th>Formation</th><th>Status</th><th>Registered at</th><th>Notes</th><th>Actions</th></tr></thead><tbody>';
+            invitedSlice.forEach(function (r) {
+              const ph = escapeAttr(r.phone);
+              const fid = escapeAttr(r.formationId);
+              const notesFull = escapeAttr(r.notes || '');
+              const st = escapeAttr(r.status || '');
+              html += '<tr data-phone="' + ph + '" data-formation-id="' + fid + '" data-notes="' + notesFull + '" data-status="' + st + '">';
+              html += '<td>' + ph + '</td><td>' + escapeAttr(r.formationId) + '</td><td>' + escapeAttr(r.status) + '</td><td>' + escapeAttr(r.registeredAt) + '</td><td>' + escapeAttr((r.notes || '').substring(0, 50)) + (r.notes && r.notes.length > 50 ? '\u2026' : '') + '</td>';
+              html += '<td><button type="button" class="btn btn-xs btn-secondary fc-edit-row" title="Edit">Edit</button> <button type="button" class="btn btn-xs btn-secondary fc-delete-row" style="color: #b91c1c;" title="Permanently delete">Delete</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            invitedTable.innerHTML = html;
+            bindRowActions(invitedTable);
+          }
+        }
+        renderPagination(invitedPagination, 'invited', totalInvited, pageInvited);
+
+        if (registeredTable) {
+          if (registered.length === 0) {
+            registeredTable.innerHTML = '<p class="info info-muted">No registered candidates.' + (searchTerm ? ' Try a different phone filter.' : '') + '</p>';
+          } else {
+            let html = '<table class="data-table"><thead><tr><th>Phone</th><th>Name</th><th>Date of registration</th><th>Formation</th><th>Notes</th><th>Actions</th></tr></thead><tbody>';
+            registeredSlice.forEach(function (r) {
+              const ph = escapeAttr(r.phone);
+              const fid = escapeAttr(r.formationId);
+              const notesFull = escapeAttr(r.notes || '');
+              const st = escapeAttr(r.status || 'Registered');
+              const name = escapeAttr(r.fullName || '—');
+              const regDate = escapeAttr(r.registeredAt || '—');
+              html += '<tr data-phone="' + ph + '" data-formation-id="' + fid + '" data-notes="' + notesFull + '" data-status="' + st + '">';
+              html += '<td>' + ph + '</td><td>' + name + '</td><td>' + regDate + '</td><td>' + escapeAttr(r.formationId) + '</td><td>' + escapeAttr((r.notes || '').substring(0, 50)) + (r.notes && r.notes.length > 50 ? '\u2026' : '') + '</td>';
+              html += '<td><button type="button" class="btn btn-xs btn-secondary fc-edit-row" title="Edit">Edit</button> <button type="button" class="btn btn-xs btn-secondary fc-delete-row" style="color: #b91c1c;" title="Permanently delete">Delete</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            registeredTable.innerHTML = html;
+            bindRowActions(registeredTable);
+          }
+        }
+        renderPagination(registeredPagination, 'registered', totalRegistered, pageRegistered);
+
+        if (pendingTable) {
+          if (pending.length === 0) {
+            pendingTable.innerHTML = '<p class="info info-muted">No pending (invited but not yet registered) candidates.' + (searchTerm ? ' Try a different phone filter.' : '') + '</p>';
+          } else {
+            let html = '<table class="data-table"><thead><tr><th>Phone</th><th>Formation</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>';
+            pendingSlice.forEach(function (r) {
+              const ph = escapeAttr(r.phone);
+              const fid = escapeAttr(r.formationId);
+              const notesFull = escapeAttr(r.notes || '');
+              const st = escapeAttr(r.status || 'Pending');
+              html += '<tr data-phone="' + ph + '" data-formation-id="' + fid + '" data-notes="' + notesFull + '" data-status="' + st + '">';
+              html += '<td>' + ph + '</td><td>' + escapeAttr(r.formationId) + '</td><td>' + escapeAttr(r.status) + '</td><td>' + escapeAttr((r.notes || '').substring(0, 50)) + (r.notes && r.notes.length > 50 ? '\u2026' : '') + '</td>';
+              html += '<td><button type="button" class="btn btn-xs btn-secondary fc-edit-row" title="Edit">Edit</button> <button type="button" class="btn btn-xs btn-secondary fc-delete-row" style="color: #b91c1c;" title="Permanently delete">Delete</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            pendingTable.innerHTML = html;
+            bindRowActions(pendingTable);
+          }
+        }
+        renderPagination(pendingPagination, 'pending', totalPending, pagePending);
+      }
 
       async function loadFieldCaptureFormations() {
         if (!formationSelect) return;
@@ -7438,53 +7690,30 @@ const AdminPage = (function () {
       }
 
       async function loadFieldCaptureCandidates() {
-        if (!candidatesTable) return;
         try {
           const formationId = formationSelect && formationSelect.value ? formationSelect.value : '';
           const res = await Api.call('listInvitedCandidates', { key: adminKey, formationId: formationId || undefined });
           if (res && res.success && res.data && Array.isArray(res.data.candidates)) {
-            const rows = res.data.candidates;
-            if (rows.length === 0) {
-              candidatesTable.innerHTML = '<p class="info info-muted">No invited candidates. Use "Add invite" or "Bulk upload CSV" to add entries.</p>';
-              return;
-            }
-            const escapeAttr = (s) => String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/\r?\n/g, ' ');
-            let html = '<table class="data-table"><thead><tr><th>Phone</th><th>Formation</th><th>Status</th><th>Registered at</th><th>Employee ID</th><th>Notes</th><th>Actions</th></tr></thead><tbody>';
-            rows.forEach(r => {
-              const ph = escapeAttr(r.phone);
-              const fid = escapeAttr(r.formationId);
-              const notesFull = escapeAttr(r.notes || '');
-              html += '<tr data-phone="' + ph + '" data-formation-id="' + fid + '" data-notes="' + notesFull + '">';
-              html += '<td>' + escapeAttr(r.phone) + '</td><td>' + escapeAttr(r.formationId) + '</td><td>' + escapeAttr(r.status) + '</td><td>' + escapeAttr(r.registeredAt) + '</td><td>' + escapeAttr(r.employeeId) + '</td><td>' + escapeAttr((r.notes || '').substring(0, 50)) + (r.notes && r.notes.length > 50 ? '…' : '') + '</td>';
-              html += '<td><button type="button" class="btn btn-xs btn-secondary fc-edit-row" title="Edit">Edit</button> <button type="button" class="btn btn-xs btn-secondary fc-delete-row" style="color: #b91c1c;" title="Permanently delete">Delete</button></td></tr>';
-            });
-            html += '</tbody></table>';
-            candidatesTable.innerHTML = html;
-            candidatesTable.querySelectorAll('.fc-edit-row').forEach(btn => {
-              btn.addEventListener('click', () => {
-                const row = btn.closest('tr');
-                if (!row) return;
-                openFcEditModal(row.dataset.phone, row.dataset.formationId, row);
-              });
-            });
-            candidatesTable.querySelectorAll('.fc-delete-row').forEach(btn => {
-              btn.addEventListener('click', () => {
-                const row = btn.closest('tr');
-                if (!row) return;
-                deleteFcRow(row.dataset.phone, row.dataset.formationId, row);
-              });
-            });
+            fcCandidatesCache = res.data.candidates;
+            fcPageInvited = 1;
+            fcPageRegistered = 1;
+            fcPagePending = 1;
+            renderFieldCaptureTables();
           } else {
-            candidatesTable.innerHTML = '<p class="info info-muted">Could not load candidates.</p>';
+            fcCandidatesCache = [];
+            renderFieldCaptureTables();
           }
         } catch (e) {
-          candidatesTable.innerHTML = '<p class="info info-warning">Failed to load candidates.</p>';
+          fcCandidatesCache = [];
+          if (invitedTable) invitedTable.innerHTML = '<p class="info info-warning">Failed to load candidates.</p>';
+          if (registeredTable) registeredTable.innerHTML = '';
+          if (pendingTable) pendingTable.innerHTML = '';
         }
       }
 
       async function openFcEditModal(phone, formationId, rowEl) {
         const notes = (rowEl && rowEl.dataset.notes !== undefined) ? (rowEl.dataset.notes || '') : ((rowEl && rowEl.cells[5]) ? rowEl.cells[5].textContent : '');
-        const status = (rowEl && rowEl.cells[2]) ? rowEl.cells[2].textContent : 'Pending';
+        const status = (rowEl && rowEl.dataset.status !== undefined) ? (rowEl.dataset.status || 'Pending') : ((rowEl && rowEl.cells[2]) ? rowEl.cells[2].textContent : 'Pending');
         const formOpts = formationSelect ? Array.from(formationSelect.options).map(o => ({ value: o.value, text: o.textContent })) : [];
         const result = await Swal.fire({
           title: 'Edit invited candidate',
@@ -7562,6 +7791,53 @@ const AdminPage = (function () {
       if (formationSelect) {
         formationSelect.addEventListener('change', () => {
           loadFieldCaptureCandidates();
+        });
+      }
+      if (phoneSearchInput) {
+        phoneSearchInput.addEventListener('input', () => { renderFieldCaptureTables(); });
+        phoneSearchInput.addEventListener('change', () => { renderFieldCaptureTables(); });
+      }
+
+      var fcSection = document.getElementById('fcFieldCaptureSection');
+      var fcInvitedHeader = document.getElementById('fcInvitedHeader');
+      var fcRegisteredHeader = document.getElementById('fcRegisteredHeader');
+      var fcPendingHeader = document.getElementById('fcPendingHeader');
+      var fcInvitedSection = document.getElementById('fcInvitedSection');
+      var fcRegisteredSection = document.getElementById('fcRegisteredSection');
+      var fcPendingSection = document.getElementById('fcPendingSection');
+      if (fcInvitedHeader && fcInvitedSection) {
+        fcInvitedHeader.addEventListener('click', function () {
+          var expanded = this.getAttribute('aria-expanded') !== 'false';
+          fcInvitedSection.classList.toggle('fc-collapsible-collapsed', expanded);
+          this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        });
+      }
+      if (fcRegisteredHeader && fcRegisteredSection) {
+        fcRegisteredHeader.addEventListener('click', function () {
+          var expanded = this.getAttribute('aria-expanded') !== 'false';
+          fcRegisteredSection.classList.toggle('fc-collapsible-collapsed', expanded);
+          this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        });
+      }
+      if (fcPendingHeader && fcPendingSection) {
+        fcPendingHeader.addEventListener('click', function () {
+          var expanded = this.getAttribute('aria-expanded') !== 'false';
+          fcPendingSection.classList.toggle('fc-collapsible-collapsed', expanded);
+          this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        });
+      }
+      if (fcSection) {
+        fcSection.addEventListener('click', function (e) {
+          var btn = e.target.closest('.fc-page-btn');
+          if (!btn || btn.disabled) return;
+          var list = btn.getAttribute('data-fc-list');
+          var goto = btn.getAttribute('data-fc-goto');
+          if (list === 'invited' && goto === 'prev') { fcPageInvited = Math.max(1, fcPageInvited - 1); renderFieldCaptureTables(); }
+          if (list === 'invited' && goto === 'next') { fcPageInvited++; renderFieldCaptureTables(); }
+          if (list === 'registered' && goto === 'prev') { fcPageRegistered = Math.max(1, fcPageRegistered - 1); renderFieldCaptureTables(); }
+          if (list === 'registered' && goto === 'next') { fcPageRegistered++; renderFieldCaptureTables(); }
+          if (list === 'pending' && goto === 'prev') { fcPagePending = Math.max(1, fcPagePending - 1); renderFieldCaptureTables(); }
+          if (list === 'pending' && goto === 'next') { fcPagePending++; renderFieldCaptureTables(); }
         });
       }
 
