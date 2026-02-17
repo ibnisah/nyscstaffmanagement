@@ -266,9 +266,9 @@
             <textarea id="fcPresentAddress" rows="2"></textarea>
           </div>
           <div class="field">
-            <label for="fcStateSecretariat">State Secretariat to Collect Posting Letter</label>
-            <select id="fcStateSecretariat">
-              <option value="">-- Select --</option>
+            <label for="fcStateSecretariat">State Secretariat to Collect Posting Letter *</label>
+            <select id="fcStateSecretariat" required aria-required="true">
+              <option value="">-- Select state secretariat --</option>
             </select>
           </div>
           <div class="field">
@@ -294,8 +294,12 @@
     <div id="stepDocuments" class="step">
       <section class="card">
         <h1>Upload documents</h1>
+
         <div class="field" style="margin-bottom: 1.25rem;">
           <label>Full Length Photograph (Mandatory)</label>
+          <p class="fc-upload-desc" style="font-size: 0.9rem; color: #4b5563; margin: 0.35rem 0 0.75rem 0; line-height: 1.5;">
+            Upload a clear full-length photo (head to toe) in good lighting. Use <strong>Take Photo</strong> to capture with your camera, or <strong>Upload from Gallery</strong> to choose an existing image. Accepted formats: JPG, PNG or WebP. Maximum size: 8MB.
+          </p>
           <input type="file" id="fcFullPhotoCamera" accept="image/*" capture="environment" style="display: none;" />
           <input type="file" id="fcFullPhotoGallery" accept="image/*" style="display: none;" />
           <div class="photo-options-row">
@@ -309,20 +313,27 @@
             </div>
           </div>
         </div>
-        <p style="margin-bottom: 0.5rem;">Optional: Add documents (JPG/JPEG, max 8MB each).</p>
-        <input type="file" id="fcDocCamera" accept="image/*" capture="environment" style="display: none;" />
-        <input type="file" id="fcDocGallery" accept="image/*" style="display: none;" />
-        <div class="photo-options-row" style="margin-bottom: 0.5rem;">
-          <div class="photo-option">
-            <button type="button" id="fcDocTakeBtn" class="btn btn-secondary">Take Photo</button>
-            <div id="fcDocCameraName" class="photo-filename"></div>
+
+        <div class="field" style="margin-bottom: 1rem;">
+          <label>Other documents (certificates, letters, etc.)</label>
+          <p class="fc-upload-desc" style="font-size: 0.9rem; color: #4b5563; margin: 0.35rem 0 0.75rem 0; line-height: 1.5;">
+            You may add up to <strong>10 documents</strong> (e.g. certificates, appointment letters). For each document: click <strong>Take Photo</strong> to capture a new image, or <strong>Upload from Gallery</strong> to select a file. Accepted format: JPG/JPEG only, max 8MB per file. Add documents one at a time; they will appear in the list below. When done, click <strong>Finish</strong> to submit your registration.
+          </p>
+          <input type="file" id="fcDocCamera" accept="image/*" capture="environment" style="display: none;" />
+          <input type="file" id="fcDocGallery" accept="image/*" style="display: none;" />
+          <div class="photo-options-row" style="margin-bottom: 0.5rem;">
+            <div class="photo-option">
+              <button type="button" id="fcDocTakeBtn" class="btn btn-secondary">Take Photo</button>
+              <div id="fcDocCameraName" class="photo-filename"></div>
+            </div>
+            <div class="photo-option">
+              <button type="button" id="fcDocGalleryBtn" class="btn btn-secondary">Upload from Gallery</button>
+              <div id="fcDocGalleryName" class="photo-filename"></div>
+            </div>
           </div>
-          <div class="photo-option">
-            <button type="button" id="fcDocGalleryBtn" class="btn btn-secondary">Upload from Gallery</button>
-            <div id="fcDocGalleryName" class="photo-filename"></div>
-          </div>
+          <div id="fcDocList" style="margin: 1rem 0; min-height: 2rem;"></div>
         </div>
-        <div id="fcDocList" style="margin: 1rem 0; min-height: 2rem;"></div>
+
         <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <button type="button" id="fcDocFinishBtn" class="btn btn-primary">Finish</button>
         </div>
