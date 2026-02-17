@@ -3458,9 +3458,9 @@ const AdminPage = (function () {
         if (searchRes && searchRes.success && searchRes.data && searchRes.data.results) {
           const results = searchRes.data.results || [];
           allStaff = allStaff.concat(results);
-          
           const pagination = searchRes.data.pagination || {};
-          hasMore = pagination.hasNext === true && results.length === limit;
+          // Backend caps limit at 100 per page; use hasNext so we fetch all pages for accurate tally
+          hasMore = pagination.hasNext === true;
           page++;
         } else {
           hasMore = false;
@@ -4740,6 +4740,7 @@ const AdminPage = (function () {
 
       const canEdit = isHrmAdminActionRole(adminRole) || adminRole === 'SUPER_ADMIN';
       const canArchive = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1' || adminRole === 'HRM_ADMIN_2';
+      const canRemoveReplaceDoc = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1';
 
       const SERVICE_RECORD_TAB_CONFIG = {
         appointments: {
@@ -4905,6 +4906,7 @@ const AdminPage = (function () {
                   <button type="button" id="staffDocGalleryNext" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next →</button>
                 </div>
                 <div id="staffDocGalleryCaption" style="padding: 0.5rem 1rem; font-size: 0.8rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+                ${canRemoveReplaceDoc ? '<div id="staffDocGalleryActions" style="padding: 0.5rem 1rem; border-top: 1px solid #e5e7eb; display: flex; gap: 0.5rem;"><button type="button" id="staffDocRemoveBtn" class="btn btn-secondary btn-xs">Remove this document</button><button type="button" id="staffDocReplaceBtn" class="btn btn-secondary btn-xs">Replace with new file</button></div>' : ''}
               </div>`}
             </div>
 
@@ -5027,6 +5029,76 @@ const AdminPage = (function () {
               galleryNext.onclick = () => {
                 docIndex = docIndex >= documents.length - 1 ? 0 : docIndex + 1;
                 updateDocGallery();
+              };
+            }
+            const removeDocBtn = document.getElementById('staffDocRemoveBtn');
+            const replaceDocBtn = document.getElementById('staffDocReplaceBtn');
+            if (removeDocBtn && canRemoveReplaceDoc) {
+              removeDocBtn.onclick = async () => {
+                const d = documents[docIndex];
+                if (!d || !d.driveFileId) return;
+                const confirm = await Swal.fire({ title: 'Remove document?', text: 'This will permanently remove this document.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Remove' });
+                if (!confirm.isConfirmed) return;
+                try {
+                  UI.showLoading('Removing', '...');
+                  await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
+                  UI.closeLoading();
+                  await UI.showSuccess('Removed', 'Document removed.');
+                  Swal.close();
+                  await showFullStaffProfile(employeeId, staff.formationId || '');
+                } catch (err) {
+                  UI.closeLoading();
+                  await UI.showError('Error', err && err.message ? err.message : 'Failed to remove document.');
+                }
+              };
+            }
+            if (replaceDocBtn && canRemoveReplaceDoc) {
+              replaceDocBtn.onclick = () => {
+                const d = documents[docIndex];
+                if (!d || !d.driveFileId) return;
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/jpeg,image/jpg,.jpg,.jpeg';
+                input.onchange = async (e) => {
+                  const file = e.target.files && e.target.files[0];
+                  if (!file) return;
+                  if (file.size > 2 * 1024 * 1024) {
+                    await UI.showError('File too large', 'Document must be 2MB or less.');
+                    return;
+                  }
+                  try {
+                    UI.showLoading('Replacing', 'Removing old and uploading new...');
+                    await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      try {
+                        const base64 = reader.result;
+                        await Api.call('uploadDocumentMetadata', {
+                          key: adminKey,
+                          employeeId,
+                          formationId: staff.formationId || '',
+                          subUnitId: staff.subUnitId || '',
+                          fileData: base64,
+                          fileName: file.name || 'document.jpg',
+                          mimeType: file.type || 'image/jpeg',
+                          fileSize: file.size
+                        });
+                        UI.closeLoading();
+                        await UI.showSuccess('Replaced', 'Document replaced successfully.');
+                        Swal.close();
+                        await showFullStaffProfile(employeeId, staff.formationId || '');
+                      } catch (err2) {
+                        UI.closeLoading();
+                        await UI.showError('Error', err2 && err2.message ? err2.message : 'Upload failed.');
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  } catch (err) {
+                    UI.closeLoading();
+                    await UI.showError('Error', err && err.message ? err.message : 'Replace failed.');
+                  }
+                };
+                input.click();
               };
             }
           }
