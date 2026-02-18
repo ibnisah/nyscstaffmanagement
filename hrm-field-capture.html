@@ -295,7 +295,23 @@
       <section class="card">
         <h1>Upload documents</h1>
 
-        <div class="field" style="margin-bottom: 1.25rem;">
+        <div id="fcProfileBlockInDocs" class="field" style="margin-bottom: 1.25rem; display: none;">
+          <label>Passport / profile picture (required, max 5MB)</label>
+          <input type="file" id="fcProfilePhotoCameraDocs" accept="image/*" capture="environment" style="display: none;" />
+          <input type="file" id="fcProfilePhotoGalleryDocs" accept="image/*" style="display: none;" />
+          <div class="photo-options-row">
+            <div class="photo-option">
+              <button type="button" id="fcProfilePhotoTakeBtnDocs" class="btn btn-secondary">Take Photo</button>
+              <div id="cameraFileNameDocs" class="photo-filename"></div>
+            </div>
+            <div class="photo-option">
+              <button type="button" id="fcProfilePhotoGalleryBtnDocs" class="btn btn-secondary">Upload from Gallery</button>
+              <div id="galleryFileNameDocs" class="photo-filename"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="fcFullPhotoBlock" class="field" style="margin-bottom: 1.25rem;">
           <label>Full Length Photograph (Mandatory)</label>
           <p class="fc-upload-desc" style="font-size: 0.9rem; color: #4b5563; margin: 0.35rem 0 0.75rem 0; line-height: 1.5;">
             Upload a clear full-length photo (head to toe) in good lighting. Use <strong>Take Photo</strong> to capture with your camera, or <strong>Upload from Gallery</strong> to choose an existing image. Accepted formats: JPG, PNG or WebP. Maximum size: 8MB.
@@ -314,10 +330,10 @@
           </div>
         </div>
 
-        <div class="field" style="margin-bottom: 1rem;">
+        <div id="fcDocumentsBlock" class="field" style="margin-bottom: 1rem;">
           <label>Other documents (certificates, letters, etc.)</label>
           <p class="fc-upload-desc" style="font-size: 0.9rem; color: #4b5563; margin: 0.35rem 0 0.75rem 0; line-height: 1.5;">
-            You may add up to <strong>10 documents</strong> (e.g. certificates, appointment letters). For each document: click <strong>Take Photo</strong> to capture a new image, or <strong>Upload from Gallery</strong> to select a file. Accepted format: JPG/JPEG only, max 8MB per file. Add documents one at a time; they will appear in the list below. When done, click <strong>Finish</strong> to submit your registration.
+            Add at least <strong>3 documents</strong> (up to 10, e.g. certificates, appointment letters). For each document: click <strong>Take Photo</strong> to capture a new image, or <strong>Upload from Gallery</strong> to select a file. Accepted format: JPG/JPEG only, max 8MB per file. Add documents one at a time; they will appear in the list below. When done, click <strong>Finish</strong> to submit your registration.
           </p>
           <input type="file" id="fcDocCamera" accept="image/*" capture="environment" style="display: none;" />
           <input type="file" id="fcDocGallery" accept="image/*" style="display: none;" />
@@ -354,8 +370,20 @@
 (function () {
   var formationId = 'FIELD_CAPTURE'; // Default for nationwide field capture (no formation restriction)
   var sessionToken = '';
+  var uploadMode = false; // true when continueUpload or uploadToken (uploads only, no form)
+  var uploadTokenInfo = null; // { employeeId, formationId, subUnitId, uploadTypes, profileUploadToken, documentUploadToken, fullPhotoUploadToken }
+  var profileUploadToken = '';
+  var documentUploadToken = '';
+  var fullPhotoUploadToken = '';
+  var uploadEmployeeId = ''; // employeeId for uploads (from createStaffFieldCapture or continueUpload)
 
   function parseUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    var token = params.get('uploadToken') || params.get('upload_token') || '';
+    if (token) {
+      uploadTokenInfo = { uploadToken: token };
+      return true;
+    }
     return true; // Single universal URL; no formation/token required
   }
 
@@ -765,6 +793,40 @@
     galleryInput.addEventListener('change', function (e) { handleFullPhotoSelection(false, e); });
   })();
 
+  (function setupProfilePhotoInDocs() {
+    var cameraInput = document.getElementById('fcProfilePhotoCameraDocs');
+    var galleryInput = document.getElementById('fcProfilePhotoGalleryDocs');
+    var takeBtn = document.getElementById('fcProfilePhotoTakeBtnDocs');
+    var galleryBtn = document.getElementById('fcProfilePhotoGalleryBtnDocs');
+    var cameraNameEl = document.getElementById('cameraFileNameDocs');
+    var galleryNameEl = document.getElementById('galleryFileNameDocs');
+    if (!cameraInput || !galleryInput || !takeBtn || !galleryBtn) return;
+    takeBtn.addEventListener('click', function () { cameraInput.click(); });
+    galleryBtn.addEventListener('click', function () { galleryInput.click(); });
+    function handleSelect(isCamera, event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (isCamera) galleryInput.value = '';
+      else cameraInput.value = '';
+      var validation = validateProfilePhotoFile(file);
+      if (!validation.ok) {
+        Swal.fire({ icon: 'error', title: 'Invalid photo', text: validation.message });
+        return;
+      }
+      if (isCamera && cameraNameEl) cameraNameEl.textContent = file.name;
+      if (!isCamera && galleryNameEl) galleryNameEl.textContent = file.name;
+      profilePhotoPayload = null;
+      resizeAndCompressProfilePhoto(file).then(function (payload) {
+        profilePhotoPayload = payload;
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'Profile photo', text: (err && err.message) || 'Failed to process.' });
+        profilePhotoPayload = null;
+      });
+    }
+    cameraInput.addEventListener('change', function (e) { handleSelect(true, e); });
+    galleryInput.addEventListener('change', function (e) { handleSelect(false, e); });
+  })();
+
   document.getElementById('phoneForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var phone = (document.getElementById('phone').value || '').trim();
@@ -776,18 +838,46 @@
     });
     Api.call('verifyInvitedPhoneNumber', { phone: phone })
       .then(function (res) {
-        if (res && res.success && res.data && res.data.sessionToken) {
-          sessionToken = res.data.sessionToken;
-          formationId = (res.data.formationId && res.data.formationId.trim()) ? res.data.formationId : 'FIELD_CAPTURE';
-          Swal.fire({
-            title: 'Loading form...',
-            allowOutsideClick: false,
-            didOpen: function () { Swal.showLoading(); }
-          });
-          return Api.call('getFieldCaptureDepartments', { sessionToken: sessionToken, formationId: formationId })
-            .then(function (dRes) {
-              var depts = (dRes && dRes.data && dRes.data.departments) ? dRes.data.departments : [];
-              var sel = document.getElementById('fcSubUnit');
+        if (!res || !res.success) {
+          Swal.close();
+          var msg = (res && res.message) ? res.message : 'This phone number is not in the invite list or has already completed registration.';
+          if ((res && res.code) === 'ALREADY_REGISTERED') {
+            msg = 'This phone number has already completed registration. Contact HR if you need to update your documents.';
+          } else if ((res && res.code) === 'NOT_INVITED') {
+            msg = 'This phone number is not in the invite list. Contact HR.';
+          }
+          Swal.fire({ icon: 'error', title: 'Cannot continue', text: msg });
+          return;
+        }
+        var data = res.data || {};
+        sessionToken = data.sessionToken;
+        if (!sessionToken) {
+          Swal.close();
+          Swal.fire({ icon: 'error', title: 'Error', text: 'Verification failed. Please try again.' });
+          return;
+        }
+        formationId = (data.formationId && String(data.formationId).trim()) ? data.formationId : 'FIELD_CAPTURE';
+        if (data.continueUpload === true && data.employeeId) {
+          uploadMode = true;
+          uploadEmployeeId = String(data.employeeId).trim();
+          profileUploadToken = data.profileUploadToken || '';
+          documentUploadToken = data.documentUploadToken || '';
+          fullPhotoUploadToken = data.fullPhotoUploadToken || '';
+          var block = document.getElementById('fcProfileBlockInDocs');
+          if (block) { block.style.display = 'block'; }
+          fcFormData = { formationId: formationId, subUnitId: data.subUnitId || '', employeeId: uploadEmployeeId };
+          documentPayloads = [];
+          renderDocList();
+          Swal.close();
+          showStep('stepDocuments');
+          return;
+        }
+        Swal.fire({ title: 'Loading form...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+        return Api.call('getFieldCaptureDepartments', { sessionToken: sessionToken, formationId: formationId })
+          .then(function (dRes) {
+            var depts = (dRes && dRes.data && dRes.data.departments) ? dRes.data.departments : [];
+            var sel = document.getElementById('fcSubUnit');
+            if (sel) {
               sel.innerHTML = '<option value="">-- None yet / Add later --</option>';
               depts.forEach(function (d) {
                 var opt = document.createElement('option');
@@ -795,32 +885,25 @@
                 opt.textContent = d.name || d.departmentId || d.subUnitId || '';
                 sel.appendChild(opt);
               });
-              fillGradeLevels();
-              fillStates('fcStateOfOrigin');
-              fillStates('fcPresentState');
-              fillStateSecretariats();
-            })
-            .catch(function () {})
-            .then(function () {
-              Swal.close();
-              showStep('stepForm');
-            });
-        } else {
-          Swal.close();
-          Swal.fire({
-            icon: 'error',
-            title: 'Cannot continue',
-            text: (res && res.message) ? res.message : 'This phone number is not in the invite list or has already registered.'
+            }
+            fillGradeLevels();
+            fillStates('fcStateOfOrigin');
+            fillStates('fcPresentState');
+            fillStateSecretariats();
+          })
+          .catch(function () {})
+          .then(function () {
+            Swal.close();
+            showStep('stepForm');
           });
-        }
       })
       .catch(function (err) {
         Swal.close();
-        Swal.fire({
-          icon: 'error',
-          title: 'Error',
-          text: (err && err.message) ? err.message : 'Verification failed. Please try again.'
-        });
+        var errMsg = (err && err.message) ? err.message : 'Verification failed.';
+        if (errMsg.toLowerCase().indexOf('timeout') !== -1 || errMsg.toLowerCase().indexOf('network') !== -1) {
+          errMsg = 'Verification failed or request timed out. Please check your connection and try again. You can verify your phone again to continue.';
+        }
+        Swal.fire({ icon: 'error', title: 'Error', text: errMsg });
       });
   });
 
@@ -951,8 +1034,40 @@
     galleryInput.addEventListener('change', function (e) { handleDocSelection(false, e); });
   })();
 
+  var MIN_DOCUMENTS = 3;
+
+  function needProfilePic() {
+    if (uploadTokenInfo && uploadTokenInfo.uploadTypes) {
+      return uploadTokenInfo.uploadTypes.indexOf('profilePicture') !== -1;
+    }
+    return uploadMode;
+  }
+  function needFullPic() {
+    if (uploadTokenInfo && uploadTokenInfo.uploadTypes) {
+      return uploadTokenInfo.uploadTypes.indexOf('fullPicture') !== -1;
+    }
+    return true;
+  }
+  function needDocuments() {
+    if (uploadTokenInfo && uploadTokenInfo.uploadTypes) {
+      return uploadTokenInfo.uploadTypes.indexOf('documents') !== -1;
+    }
+    return true;
+  }
+  function minDocumentsRequired() {
+    return needDocuments() ? MIN_DOCUMENTS : 0;
+  }
+
   document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
-    if (!fullPhotoPayload) {
+    if (needProfilePic() && !profilePhotoPayload) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Profile picture required',
+        text: 'Please take or upload a passport / profile picture before finishing.'
+      });
+      return;
+    }
+    if (needFullPic() && !fullPhotoPayload) {
       Swal.fire({
         icon: 'warning',
         title: 'Full length photograph required',
@@ -960,90 +1075,171 @@
       });
       return;
     }
-    if (!fcFormData || !sessionToken) {
-      Swal.fire({ icon: 'error', title: 'Error', text: 'Session expired. Please start again from the QR link.' });
+    var minDocs = minDocumentsRequired();
+    if (minDocs > 0 && documentPayloads.length < minDocs) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'More documents needed',
+        text: 'Please add at least ' + minDocs + ' documents (certificates, appointment letters, etc.) before finishing.'
+      });
       return;
+    }
+    if (uploadTokenInfo) {
+      if (!uploadTokenInfo.employeeId || !uploadTokenInfo.formationId) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Invalid upload link. Please contact HR.' });
+        return;
+      }
+    } else {
+      if (!fcFormData || !sessionToken) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Session expired. Please start again from the verification link.' });
+        return;
+      }
     }
     Swal.fire({ title: 'Submitting...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
 
-    function runUnifiedSubmission() {
+    function doUploads(empId, profTok, docTok, fullTok, subId) {
+      var chain = Promise.resolve();
+      if (profilePhotoPayload && profTok) {
+        chain = chain.then(function () {
+          return Api.call('uploadStaffProfilePictureFieldCapture', {
+            profileUploadToken: profTok,
+            employeeId: empId,
+            formationId: formationId,
+            subUnitId: subId || '',
+            fileData: profilePhotoPayload.base64Data,
+            fileName: profilePhotoPayload.fileName,
+            mimeType: profilePhotoPayload.mimeType,
+            fileSize: profilePhotoPayload.fileSize
+          });
+        });
+      }
+      if (fullPhotoPayload && fullTok) {
+        chain = chain.then(function () {
+          return Api.call('uploadStaffFullPictureFieldCapture', {
+            fullPhotoUploadToken: fullTok,
+            employeeId: empId,
+            formationId: formationId,
+            subUnitId: subId || '',
+            fileData: fullPhotoPayload.base64Data,
+            fileName: fullPhotoPayload.fileName,
+            mimeType: fullPhotoPayload.mimeType,
+            fileSize: fullPhotoPayload.fileSize
+          });
+        });
+      }
+      (documentPayloads || []).forEach(function (payload) {
+        chain = chain.then(function () {
+          return Api.call('uploadStaffDocumentFieldCapture', {
+            documentUploadToken: docTok,
+            employeeId: empId,
+            formationId: formationId,
+            subUnitId: subId || '',
+            fileData: payload.base64Data,
+            fileName: payload.fileName,
+            mimeType: payload.mimeType,
+            fileSize: payload.fileSize
+          });
+        });
+      });
+      return chain;
+    }
+
+    function runSubmission() {
+      if (uploadTokenInfo) {
+        return doUploads(
+          uploadTokenInfo.employeeId,
+          uploadTokenInfo.profileUploadToken || '',
+          uploadTokenInfo.documentUploadToken || '',
+          uploadTokenInfo.fullPhotoUploadToken || '',
+          uploadTokenInfo.subUnitId || ''
+        );
+      }
+      if (uploadMode) {
+        return doUploads(
+          uploadEmployeeId || fcFormData.employeeId,
+          profileUploadToken,
+          documentUploadToken,
+          fullPhotoUploadToken,
+          fcFormData.subUnitId || ''
+        ).then(function () {
+          return Api.call('completeFieldCaptureRegistration', { sessionToken: sessionToken });
+        });
+      }
       return Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: fcFormData })
         .then(function (res) {
           if (!res || !res.success || !res.data) {
             return Promise.reject(new Error((res && res.message) ? res.message : 'Registration failed.'));
           }
-          var employeeId = res.data.employeeId;
-          var profileUploadToken = res.data.profileUploadToken;
-          var documentUploadToken = res.data.documentUploadToken;
-          var fullPhotoUploadToken = res.data.fullPhotoUploadToken || '';
-          var subUnitId = (res.data && res.data.subUnitId) || fcFormData.subUnitId || '';
-          var chain = Promise.resolve();
-          if (profilePhotoPayload && profileUploadToken) {
-            chain = chain.then(function () {
-              return Api.call('uploadStaffProfilePictureFieldCapture', {
-                profileUploadToken: profileUploadToken,
-                employeeId: employeeId,
-                formationId: formationId,
-                subUnitId: subUnitId,
-                fileData: profilePhotoPayload.base64Data,
-                fileName: profilePhotoPayload.fileName,
-                mimeType: profilePhotoPayload.mimeType,
-                fileSize: profilePhotoPayload.fileSize
-              });
-            });
-          }
-          if (fullPhotoPayload && fullPhotoUploadToken) {
-            chain = chain.then(function () {
-              return Api.call('uploadStaffFullPictureFieldCapture', {
-                fullPhotoUploadToken: fullPhotoUploadToken,
-                employeeId: employeeId,
-                formationId: formationId,
-                subUnitId: subUnitId || '',
-                fileData: fullPhotoPayload.base64Data,
-                fileName: fullPhotoPayload.fileName,
-                mimeType: fullPhotoPayload.mimeType,
-                fileSize: fullPhotoPayload.fileSize
-              });
-            });
-          }
-          (documentPayloads || []).forEach(function (payload) {
-            chain = chain.then(function () {
-              return Api.call('uploadStaffDocumentFieldCapture', {
-                documentUploadToken: documentUploadToken,
-                employeeId: employeeId,
-                formationId: formationId,
-                subUnitId: subUnitId,
-                fileData: payload.base64Data,
-                fileName: payload.fileName,
-                mimeType: payload.mimeType,
-                fileSize: payload.fileSize
-              });
-            });
+          var empId = res.data.employeeId;
+          uploadEmployeeId = empId;
+          var subId = (res.data.subUnitId || fcFormData.subUnitId || '').toString();
+          return doUploads(
+            empId,
+            res.data.profileUploadToken || '',
+            res.data.documentUploadToken || '',
+            res.data.fullPhotoUploadToken || '',
+            subId
+          ).then(function () {
+            return Api.call('completeFieldCaptureRegistration', { sessionToken: sessionToken });
           });
-          return chain;
         });
     }
 
-    runUnifiedSubmission()
+    runSubmission()
       .then(function () {
         profilePhotoPayload = null;
         fullPhotoPayload = null;
         documentPayloads = [];
         fcFormData = null;
+        uploadTokenInfo = null;
+        uploadMode = false;
         showSuccess();
       })
       .catch(function (err) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Submission failed',
-          text: (err && err.message) ? err.message : 'Could not complete registration. Please try again.'
-        });
+        var msg = (err && err.message) ? err.message : 'Could not complete. Please try again.';
+        if (msg.toLowerCase().indexOf('timeout') !== -1 || msg.toLowerCase().indexOf('network') !== -1) {
+          msg = 'Upload timed out or failed. Please check your connection. You can verify your phone again to continue uploading.';
+        }
+        Swal.fire({ icon: 'error', title: 'Submission failed', text: msg });
       });
   });
 
   window.addEventListener('DOMContentLoaded', function () {
     if (!parseUrlParams()) {
       setError('Unable to load. Please try again.');
+      return;
+    }
+    var params = new URLSearchParams(window.location.search);
+    var token = params.get('uploadToken') || params.get('upload_token') || '';
+    if (token) {
+      Swal.fire({ title: 'Loading...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+      Api.call('getCandidateUploadTokenInfo', { uploadToken: token })
+        .then(function (res) {
+          Swal.close();
+          if (!res || !res.success || !res.data) {
+            setError((res && res.message) ? res.message : 'This link has expired or is invalid. Contact HR for a new link.');
+            return;
+          }
+          uploadMode = true;
+          uploadTokenInfo = res.data;
+          formationId = uploadTokenInfo.formationId || 'FIELD_CAPTURE';
+          var types = uploadTokenInfo.uploadTypes || [];
+          var profileBlock = document.getElementById('fcProfileBlockInDocs');
+          if (profileBlock) profileBlock.style.display = types.indexOf('profilePicture') !== -1 ? 'block' : 'none';
+          var fullBlock = document.getElementById('fcFullPhotoBlock');
+          if (fullBlock) fullBlock.style.display = types.indexOf('fullPicture') !== -1 ? 'block' : 'none';
+          var docBlock = document.getElementById('fcDocumentsBlock');
+          if (docBlock) docBlock.style.display = types.indexOf('documents') !== -1 ? 'block' : 'none';
+          documentPayloads = [];
+          renderDocList();
+          var h1 = document.querySelector('#stepDocuments h1');
+          if (h1) h1.textContent = 'Upload missing documents';
+          showStep('stepDocuments');
+        })
+        .catch(function (err) {
+          Swal.close();
+          setError((err && err.message) ? err.message : 'Unable to load. This link may have expired. Contact HR.');
+        });
       return;
     }
     showStep('stepPhone');

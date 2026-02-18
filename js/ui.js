@@ -2772,9 +2772,8 @@ const AdminPage = (function () {
    * Client-side file validation
    * Validates file type, size, and count before upload
    */
-  function validateFileUpload(file, currentFileCount = 0) {
+  function validateFileUpload(file, currentFileCount = 0, maxFilesPerStaff = 10) {
     const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB in bytes
-    const MAX_FILES_PER_STAFF = 10;
     const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg'];
     const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.JPG', '.JPEG'];
 
@@ -2813,11 +2812,11 @@ const AdminPage = (function () {
     }
 
     // Validate file count
-    if (currentFileCount >= MAX_FILES_PER_STAFF) {
+    if (currentFileCount >= maxFilesPerStaff) {
       return {
         valid: false,
         error: 'MAX_FILES_EXCEEDED',
-        message: `Maximum file limit reached. Employee already has ${currentFileCount} files (max: ${MAX_FILES_PER_STAFF}). Please delete existing files before uploading new ones.`
+        message: `Maximum file limit reached. Employee already has ${currentFileCount} files (max: ${maxFilesPerStaff}). Please delete existing files before uploading new ones.`
       };
     }
 
@@ -2875,7 +2874,8 @@ const AdminPage = (function () {
       console.warn('Could not fetch current file count:', err);
     }
 
-    const slotsLeft = Math.max(0, 10 - currentFileCount);
+    const maxFilesPerStaff = (adminRole === 'SUPER_ADMIN') ? 100 : 10;
+    const slotsLeft = Math.max(0, maxFilesPerStaff - currentFileCount);
     const selectedFiles = [];
 
     function renderAdminDocList() {
@@ -2905,7 +2905,7 @@ const AdminPage = (function () {
           <ul style="margin-left: 1.5rem; margin-bottom: 1rem; line-height: 1.8; color: #6b7280;">
             <li>File type: JPG/JPEG images only</li>
             <li>Maximum file size: 2MB per file</li>
-            <li>Slots available: ${slotsLeft} (Current: ${currentFileCount}/10)</li>
+            <li>Slots available: ${slotsLeft} (Current: ${currentFileCount}/${maxFilesPerStaff})</li>
           </ul>
           <div id="adminDocFileList" style="margin: 1rem 0; min-height: 2rem; padding: 0.75rem; background: #f9fafb; border-radius: 6px;"></div>
           <input type="file" id="adminDocFileInput" accept="image/jpeg,image/jpg,.jpg,.jpeg" multiple style="display: none;" />
@@ -2930,7 +2930,7 @@ const AdminPage = (function () {
           if (!files || files.length === 0) return;
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const validation = validateFileUpload(file, currentFileCount + selectedFiles.length);
+            const validation = validateFileUpload(file, currentFileCount + selectedFiles.length, maxFilesPerStaff);
             if (!validation.valid) {
               UI.showError('Upload Rejected', validation.message);
               break;
@@ -4506,7 +4506,8 @@ const AdminPage = (function () {
       const docPlaceholderSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='140' viewBox='0 0 160 140'%3E%3Crect fill='%23e5e7eb' width='160' height='140'/%3E%3Ctext x='50%25' y='45%25' fill='%236b7280' font-size='14' text-anchor='middle'%3EDocument%3C/text%3E%3Ctext x='50%25' y='55%25' fill='%239ca3af' font-size='11' text-anchor='middle'%3EClick to open%3C/text%3E%3C/svg%3E";
       let documentsHtml = '';
       if (documents.length > 0) {
-        documentsHtml = '<div style="margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;"><strong style="display: block; margin-bottom: 0.75rem; font-size: 1rem;">Attached Documents (' + documents.length + '/10):</strong>';
+        const docMax = (adminRole === 'SUPER_ADMIN') ? 100 : 10;
+        documentsHtml = '<div style="margin-top: 1.5rem; border-top: 1px solid #e5e7eb; padding-top: 1rem;"><strong style="display: block; margin-bottom: 0.75rem; font-size: 1rem;">Attached Documents (' + documents.length + '/' + docMax + '):</strong>';
         documentsHtml += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-top: 0.5rem;">';
         for (const doc of documents) {
           const fileSizeKB = doc.fileSize ? (doc.fileSize / 1024).toFixed(2) + 'KB' : 'N/A';
@@ -4922,6 +4923,7 @@ const AdminPage = (function () {
                 ${(isHrmAdminRole(adminRole) || adminRole === 'SUPER_ADMIN') ? '<button type="button" id="viewRecordOfServiceBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">View Record of Service</button>' : ''}
                 ${canEdit ? `<button id="editStaffBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Edit Record</button>` : ''}
                 ${canEdit ? `<button id="uploadProfilePhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Profile Picture</button>` : ''}
+                ${adminRole === 'SUPER_ADMIN' ? `<button id="generateUploadLinkBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Generate Upload Link</button>` : ''}
                 ${canEdit ? `<button id="uploadFullPhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Full Photo</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
@@ -5150,6 +5152,80 @@ const AdminPage = (function () {
               await uploadEmployeeDocument(employeeId, staff.formationId || currentFormationId || '', staff.subUnitId || '');
               // Reload profile after upload
               await showFullStaffProfile(employeeId, staff.formationId || '');
+            });
+          }
+
+          const generateUploadLinkBtn = document.getElementById('generateUploadLinkBtn');
+          if (generateUploadLinkBtn && adminRole === 'SUPER_ADMIN') {
+            generateUploadLinkBtn.addEventListener('click', async () => {
+              const res = await Swal.fire({
+                title: 'Generate Upload Link',
+                html: `
+                  <p style="text-align: left; margin-bottom: 1rem; color: #4b5563;">Create a link for this candidate to upload missing profile picture, full picture, or documents. The link will expire after the chosen validity period.</p>
+                  <div style="text-align: left;">
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Employee ID</label>
+                    <input id="genLinkEmployeeId" class="swal2-input" value="${(employeeId || '').replace(/"/g, '&quot;')}" readonly style="background: #f3f4f6; margin-bottom: 1rem;" />
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Link validity (hours)</label>
+                    <input id="genLinkExpiryHours" class="swal2-input" type="number" min="1" max="720" value="24" placeholder="e.g. 24" style="margin-bottom: 1rem;" />
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Allow upload of:</label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;"><input type="checkbox" id="genLinkProfile" checked /> Profile Picture</label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;"><input type="checkbox" id="genLinkFull" checked /> Full Length Photo</label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" id="genLinkDocs" checked /> Documents (min 3)</label>
+                  </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Generate Link',
+                preConfirm: async () => {
+                  const empId = document.getElementById('genLinkEmployeeId')?.value?.trim();
+                  const hours = parseInt(document.getElementById('genLinkExpiryHours')?.value || '24', 10) || 24;
+                  const types = [];
+                  if (document.getElementById('genLinkProfile')?.checked) types.push('profilePicture');
+                  if (document.getElementById('genLinkFull')?.checked) types.push('fullPicture');
+                  if (document.getElementById('genLinkDocs')?.checked) types.push('documents');
+                  if (!empId) {
+                    Swal.showValidationMessage('Employee ID is required.');
+                    return false;
+                  }
+                  if (types.length === 0) {
+                    Swal.showValidationMessage('Select at least one upload type.');
+                    return false;
+                  }
+                  try {
+                    const linkRes = await Api.call('generateCandidateUploadLink', {
+                      key: adminKey,
+                      employeeId: empId,
+                      expiryHours: Math.max(1, Math.min(720, hours)),
+                      uploadTypes: types
+                    });
+                    if (!linkRes || !linkRes.success || !linkRes.data) {
+                      throw new Error(linkRes?.message || 'Failed to generate link.');
+                    }
+                    return linkRes.data;
+                  } catch (err) {
+                    Swal.showValidationMessage(err?.message || 'Failed to generate link.');
+                    return false;
+                  }
+                }
+              });
+              if (res && res.isConfirmed && res.value) {
+                const link = res.value.link || '';
+                await Swal.fire({
+                  title: 'Link Generated',
+                  html: `<p style="text-align: left; margin-bottom: 1rem;">Share this link with the candidate. Valid for ${res.value.expiryHours || 24} hour(s).</p>
+                    <input id="genLinkResult" class="swal2-input" value="${link.replace(/"/g, '&quot;')}" readonly style="font-size: 0.85rem; word-break: break-all;" />
+                    <p style="text-align: left; margin-top: 0.75rem; font-size: 0.9rem; color: #6b7280;">The candidate can use this link to upload the selected document types.</p>`,
+                  icon: 'success',
+                  confirmButtonText: 'Copy Link',
+                  showCancelButton: true,
+                  cancelButtonText: 'Close'
+                }).then((r) => {
+                  if (r.isConfirmed && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(link).then(() => {
+                      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Link copied to clipboard', showConfirmButton: false, timer: 2000 });
+                    });
+                  }
+                });
+              }
             });
           }
 
@@ -7423,7 +7499,7 @@ const AdminPage = (function () {
               type="text" 
               id="hrmStaffSearchInput" 
               class="swal2-input" 
-              placeholder="Search by name, employee ID, or file number..." 
+              placeholder="Search by name, phone number, or file number..." 
               style="flex: 1; min-width: 200px; margin: 0;"
             />
             <button class="btn btn-secondary" id="hrmStaffSearchBtn">Search</button>
