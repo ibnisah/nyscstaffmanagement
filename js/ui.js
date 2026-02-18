@@ -7144,6 +7144,10 @@ const AdminPage = (function () {
         <span class="action-btn-icon">📱</span>
         <span>Field Capture</span>
       </button>
+      <button class="action-btn" data-view="stateSecretariatStats">
+        <span class="action-btn-icon">📋</span>
+        <span>Posting Letter Stats</span>
+      </button>
     `;
 
     // Add admin actions for SUPER_ADMIN and HRM_ADMIN_1
@@ -7523,14 +7527,43 @@ const AdminPage = (function () {
           </style>
           <h2>Field Capture Management</h2>
           <p class="info info-muted">Invite staff to self-register at formation sites via QR code. Add invites below or bulk upload a CSV, then generate a QR link.</p>
-          <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1rem 0;">
-            <div class="stat-card">
-              <div class="stat-value" id="fcStatsPending">-</div>
-              <div class="stat-label">Pending Invites</div>
+          <div class="fc-stats-section" style="margin: 1.5rem 0; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <h3 style="margin: 0 0 1rem 0; font-size: 1rem; font-weight: 600; color: #334155;">Statistics at a Glance</h3>
+            <div class="dashboard-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsTotalInvited">-</div>
+                <div class="stat-label">Total Invited</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsPending">-</div>
+                <div class="stat-label">Pending</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsRegistered">-</div>
+                <div class="stat-label">Registered</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsMale">-</div>
+                <div class="stat-label">Male (Registered)</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsFemale">-</div>
+                <div class="stat-label">Female (Registered)</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsGenderRatio">-</div>
+                <div class="stat-label">M:F Ratio</div>
+              </div>
+              <div class="stat-card" style="min-height: 60px;">
+                <div class="stat-value" id="fcStatsStateSecretariat">-</div>
+                <div class="stat-label">State Secretariat (Posting Letter)</div>
+              </div>
             </div>
-            <div class="stat-card">
-              <div class="stat-value" id="fcStatsRegistered">-</div>
-              <div class="stat-label">Registered</div>
+            <div id="fcStatsByFormation" class="fc-stats-by-formation" style="margin-top: 1rem; display: none;">
+              <details style="margin-top: 0.5rem;">
+                <summary style="cursor: pointer; font-weight: 600; color: #475569;">View by formation / state secretariat</summary>
+                <div id="fcStatsByFormationTable" class="table-wrapper" style="margin-top: 0.5rem;"></div>
+              </details>
             </div>
           </div>
           <div style="margin-bottom: 1rem;">
@@ -7751,10 +7784,42 @@ const AdminPage = (function () {
         try {
           const res = await Api.call('getFieldCaptureStats', { key: adminKey });
           if (res && res.success && res.data) {
-            const pendingEl = document.getElementById('fcStatsPending');
-            const registeredEl = document.getElementById('fcStatsRegistered');
-            if (pendingEl) pendingEl.textContent = res.data.totalPending != null ? res.data.totalPending : '-';
-            if (registeredEl) registeredEl.textContent = res.data.totalRegistered != null ? res.data.totalRegistered : '-';
+            const d = res.data;
+            const setEl = (id, val, fallback) => {
+              const el = document.getElementById(id);
+              if (el) el.textContent = val != null ? val : (fallback !== undefined ? fallback : '-');
+            };
+            setEl('fcStatsTotalInvited', d.totalInvited, '0');
+            setEl('fcStatsPending', d.totalPending, '0');
+            setEl('fcStatsRegistered', d.totalRegistered, '0');
+            setEl('fcStatsMale', d.maleCount, '0');
+            setEl('fcStatsFemale', d.femaleCount, '0');
+            const maleRatio = d.maleRatio != null ? d.maleRatio : 0;
+            const femaleRatio = d.femaleRatio != null ? d.femaleRatio : 0;
+            const ratioStr = (maleRatio > 0 || femaleRatio > 0) ? (maleRatio + '% : ' + femaleRatio + '%') : '-';
+            setEl('fcStatsGenderRatio', ratioStr, '-');
+            setEl('fcStatsStateSecretariat', d.stateSecretariatPostingLetterCount != null
+              ? d.stateSecretariatPostingLetterCount + (d.stateSecretariatPostingLetterRatio != null && d.stateSecretariatPostingLetterRatio > 0
+                ? ' (' + d.stateSecretariatPostingLetterRatio + '%)'
+                : '')
+              : '-', '-');
+            const byFormation = d.byFormation || [];
+            const byFormationWrap = document.getElementById('fcStatsByFormation');
+            const byFormationTable = document.getElementById('fcStatsByFormationTable');
+            if (byFormationWrap && byFormationTable) {
+              if (byFormation.length > 0) {
+                byFormationWrap.style.display = 'block';
+                let html = '<table class="data-table"><thead><tr><th>Formation / State Secretariat</th><th>Pending</th><th>Registered</th><th>Male</th><th>Female</th><th>Other</th><th>State Secretariat (Posting Letter)</th></tr></thead><tbody>';
+                byFormation.forEach(function (bf) {
+                  const fid = (bf.formationId || '(Nationwide)').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                  html += '<tr><td>' + fid + '</td><td>' + (bf.pending ?? 0) + '</td><td>' + (bf.registered ?? 0) + '</td><td>' + (bf.male ?? 0) + '</td><td>' + (bf.female ?? 0) + '</td><td>' + (bf.other ?? 0) + '</td><td>' + (bf.stateSecretariatPostingLetter ?? 0) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                byFormationTable.innerHTML = html;
+              } else {
+                byFormationWrap.style.display = 'none';
+              }
+            }
           }
         } catch (e) {
           console.warn('Field capture: could not load stats', e);
@@ -8044,6 +8109,76 @@ const AdminPage = (function () {
       await loadFieldCaptureFormations();
       await loadFieldCaptureStats();
       await loadFieldCaptureCandidates();
+    } else if (view === 'stateSecretariatStats') {
+      container.innerHTML = `
+        <section class="card card-full-width">
+          <h2>State Secretariat to Collect Posting Letter</h2>
+          <p class="info info-muted">How many people chose each state secretariat when registering via field capture (e.g. FCT: 15, Jigawa: 8, Kano: 0). Use this to see the distribution of posting letter collection choices.</p>
+          <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="ssrRefreshBtn" style="background: var(--nysc-green);">🔄 Refresh</button>
+            <button class="btn btn-secondary" id="ssrDownloadBtn">📥 Download CSV</button>
+          </div>
+          <div id="ssrTableWrapper" class="table-wrapper">Loading...</div>
+        </section>
+      `;
+      const refreshBtn = document.getElementById('ssrRefreshBtn');
+      const downloadBtn = document.getElementById('ssrDownloadBtn');
+      const tableWrapper = document.getElementById('ssrTableWrapper');
+      let ssrRowsCache = [];
+      async function loadStateSecretariatStats() {
+        if (!tableWrapper) return;
+        tableWrapper.innerHTML = 'Loading...';
+        try {
+          const statsRes = await Api.call('getFieldCaptureStats', { key: adminKey });
+          if (!statsRes || !statsRes.success) {
+            tableWrapper.innerHTML = '<p class="info info-warning">Could not load data.</p>';
+            ssrRowsCache = [];
+            return;
+          }
+          const byChoice = statsRes.data.byStateSecretariatChoice || {};
+          const allOptions = window.NIGERIA_STATE_SECRETARIATS || [];
+          const extraKeys = Object.keys(byChoice).filter(function (k) {
+            return allOptions.indexOf(k) === -1;
+          });
+          const rows = allOptions.map(function (opt) {
+            return { name: opt, count: byChoice[opt] || 0 };
+          }).concat(extraKeys.map(function (k) {
+            return { name: k, count: byChoice[k] || 0 };
+          })).sort(function (a, b) {
+            if (b.count !== a.count) return b.count - a.count;
+            return String(a.name).localeCompare(b.name);
+          });
+          ssrRowsCache = rows;
+          let html = '<table class="data-table"><thead><tr><th>State Secretariat (Posting Letter Choice)</th><th>Count</th></tr></thead><tbody>';
+          rows.forEach(function (r) {
+            const nameEsc = String(r.name).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const rowCls = r.count > 0 ? ' style="background: #f0fdf4;"' : '';
+            html += '<tr' + rowCls + '><td>' + nameEsc + '</td><td' + rowCls + '>' + r.count + '</td></tr>';
+          });
+          html += '</tbody></table>';
+          tableWrapper.innerHTML = html;
+        } catch (e) {
+          tableWrapper.innerHTML = '<p class="info info-error">Failed to load: ' + (e && e.message ? e.message : 'Unknown error') + '</p>';
+          ssrRowsCache = [];
+        }
+      }
+      function downloadPostingLetterStats() {
+        if (ssrRowsCache.length === 0) return;
+        const csv = 'State Secretariat (Posting Letter Choice),Count\n' + ssrRowsCache.map(function (r) {
+          const name = String(r.name || '').replace(/"/g, '""');
+          return '"' + name + '",' + r.count;
+        }).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'posting-letter-stats-' + new Date().toISOString().slice(0, 10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      if (refreshBtn) refreshBtn.addEventListener('click', loadStateSecretariatStats);
+      if (downloadBtn) downloadBtn.addEventListener('click', downloadPostingLetterStats);
+      await loadStateSecretariatStats();
     } else if (view === 'profiles') {
       container.innerHTML = `
         <section class="card">
