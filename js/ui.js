@@ -7609,6 +7609,19 @@ const AdminPage = (function () {
               <div id="fcPendingPagination" class="fc-pagination" style="margin-top: 0.5rem;"></div>
             </div>
           </div>
+          <div class="fc-collapsible" id="fcRepairSection" style="margin-top: 1.5rem;">
+            <button type="button" class="fc-collapsible-header" id="fcRepairHeader" aria-expanded="false" style="width: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding: 0.6rem 2.5rem; background: #6366f1; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; color: #fff;"><span class="fc-collapsible-title" style="flex: 1; text-align: center;">Repair &amp; Deduplicate (no data deleted)</span><span class="fc-collapsible-icon" style="position: absolute; right: 0.75rem; transition: transform 0.2s; opacity: 0.95;">▼</span></button>
+            <div class="fc-collapsible-body fc-collapsible-collapsed" id="fcRepairBody" style="padding: 1rem 0 0 0;">
+              <p class="info info-muted" style="margin-bottom: 1rem;">Fix duplicate invites (same phone in multiple rows) and duplicate employee IDs. All operations preserve data — nothing is erased.</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+                <button class="btn btn-secondary" id="fcFindDupInvitesBtn">Find duplicate invites</button>
+                <button class="btn btn-primary" id="fcDedupeInvitesBtn" style="background: #6366f1;">Deduplicate invites</button>
+                <button class="btn btn-secondary" id="fcFindDupEmpIdsBtn">Find duplicate employee IDs</button>
+                <button class="btn btn-primary" id="fcRepairDupEmpIdsBtn" style="background: #6366f1;">Repair duplicate employee IDs</button>
+              </div>
+              <div id="fcRepairResult" class="info" style="display: none; padding: 0.75rem; border-radius: 6px;"></div>
+            </div>
+          </div>
         </section>
       `;
       const formationSelect = document.getElementById('fcFormationSelect');
@@ -7963,6 +7976,70 @@ const AdminPage = (function () {
           this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
         });
       }
+      var fcRepairHeader = document.getElementById('fcRepairHeader');
+      var fcRepairSection = document.getElementById('fcRepairSection');
+      if (fcRepairHeader && fcRepairSection) {
+        fcRepairHeader.addEventListener('click', function () {
+          var expanded = this.getAttribute('aria-expanded') !== 'false';
+          fcRepairSection.querySelector('.fc-collapsible-body').classList.toggle('fc-collapsible-collapsed', expanded);
+          this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        });
+      }
+      var fcFindDupInvitesBtn = document.getElementById('fcFindDupInvitesBtn');
+      var fcDedupeInvitesBtn = document.getElementById('fcDedupeInvitesBtn');
+      var fcFindDupEmpIdsBtn = document.getElementById('fcFindDupEmpIdsBtn');
+      var fcRepairDupEmpIdsBtn = document.getElementById('fcRepairDupEmpIdsBtn');
+      var fcRepairResult = document.getElementById('fcRepairResult');
+      async function runRepairAction(action, btnEl) {
+        if (!fcRepairResult) return;
+        fcRepairResult.style.display = 'block';
+        fcRepairResult.className = 'info';
+        fcRepairResult.textContent = 'Running...';
+        if (btnEl) btnEl.disabled = true;
+        try {
+          var res = await Api.call(action, { key: adminKey });
+          if (res && res.success) {
+            fcRepairResult.className = 'info';
+            fcRepairResult.style.background = '#f0fdf4';
+            fcRepairResult.style.borderColor = '#059669';
+            var d = res.data || {};
+            if (action === 'findDuplicateInvitedCandidates') {
+              var groups = d.duplicateGroups || [];
+              fcRepairResult.innerHTML = groups.length === 0 ? 'No duplicate invites found.' : '<strong>' + groups.length + ' duplicate phone group(s):</strong><pre style="margin: 0.5rem 0 0 0; font-size: 0.85rem; overflow-x: auto;">' + groups.map(function (g) { return g.normalizedPhone + ': rows ' + g.rows.map(function (r) { return r.sheetRow; }).join(', '); }).join('\n') + '</pre>';
+            } else if (action === 'deduplicateInvitedCandidates') {
+              fcRepairResult.textContent = res.message || 'Marked ' + (d.consolidatedCount || 0) + ' duplicate row(s) as Consolidated.';
+              if (loadFieldCaptureCandidates) loadFieldCaptureCandidates();
+              if (loadFieldCaptureStats) loadFieldCaptureStats();
+            } else if (action === 'findDuplicateEmployeeIds') {
+              var dups = d.duplicateEmployeeIds || [];
+              fcRepairResult.innerHTML = dups.length === 0 ? 'No duplicate employee IDs found.' : '<strong>' + dups.length + ' duplicate employeeId group(s):</strong><pre style="margin: 0.5rem 0 0 0; font-size: 0.85rem; overflow-x: auto;">' + dups.map(function (x) { return x.employeeId + ' (' + x.formationId + '): ' + x.occurrences.length + ' occurrence(s)'; }).join('\n') + '</pre>';
+            } else if (action === 'repairDuplicateEmployeeIds') {
+              fcRepairResult.textContent = res.message || 'Repaired ' + (d.repairedCount || 0) + ' duplicate(s).';
+              if (loadFieldCaptureCandidates) loadFieldCaptureCandidates();
+              if (loadFieldCaptureStats) loadFieldCaptureStats();
+            } else {
+              fcRepairResult.textContent = res.message || 'Done.';
+            }
+          } else {
+            fcRepairResult.className = 'info info-error';
+            fcRepairResult.textContent = (res && res.message) ? res.message : 'Request failed.';
+          }
+        } catch (err) {
+          fcRepairResult.className = 'info info-error';
+          fcRepairResult.textContent = (err && err.message) ? err.message : 'Error.';
+        }
+        if (btnEl) btnEl.disabled = false;
+      }
+      if (fcFindDupInvitesBtn) fcFindDupInvitesBtn.addEventListener('click', function () { runRepairAction('findDuplicateInvitedCandidates', this); });
+      if (fcDedupeInvitesBtn) fcDedupeInvitesBtn.addEventListener('click', async function () {
+        var ok = await Swal.fire({ title: 'Deduplicate invites?', text: 'Duplicate rows (same phone) will be marked as Consolidated. No data will be deleted.', icon: 'question', showCancelButton: true, confirmButtonText: 'Yes', confirmButtonColor: '#6366f1' });
+        if (ok.isConfirmed) runRepairAction('deduplicateInvitedCandidates', this);
+      });
+      if (fcFindDupEmpIdsBtn) fcFindDupEmpIdsBtn.addEventListener('click', function () { runRepairAction('findDuplicateEmployeeIds', this); });
+      if (fcRepairDupEmpIdsBtn) fcRepairDupEmpIdsBtn.addEventListener('click', async function () {
+        var ok = await Swal.fire({ title: 'Repair duplicate employee IDs?', text: 'Duplicate IDs will be assigned new unique IDs. All references will be updated. No data will be erased.', icon: 'question', showCancelButton: true, confirmButtonText: 'Yes', confirmButtonColor: '#6366f1' });
+        if (ok.isConfirmed) runRepairAction('repairDuplicateEmployeeIds', this);
+      });
       if (fcSection) {
         fcSection.addEventListener('click', function (e) {
           var btn = e.target.closest('.fc-page-btn');
