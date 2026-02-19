@@ -372,6 +372,7 @@
   var sessionToken = '';
   var uploadMode = false; // true when continueUpload or uploadToken (uploads only, no form)
   var uploadTokenInfo = null; // { employeeId, formationId, subUnitId, uploadTypes, profileUploadToken, documentUploadToken, fullPhotoUploadToken }
+  var uploadTokenRaw = ''; // raw token from URL, used to revoke link after successful upload
   var profileUploadToken = '';
   var documentUploadToken = '';
   var fullPhotoUploadToken = '';
@@ -381,6 +382,7 @@
     var params = new URLSearchParams(window.location.search);
     var token = params.get('uploadToken') || params.get('upload_token') || '';
     if (token) {
+      uploadTokenRaw = token;
       uploadTokenInfo = { uploadToken: token };
       return true;
     }
@@ -1055,7 +1057,10 @@
     return true;
   }
   function minDocumentsRequired() {
-    return needDocuments() ? MIN_DOCUMENTS : 0;
+    if (!needDocuments()) return 0;
+    // Generated upload link: no minimum (candidate can add 0 or more). Initial registration: require 3.
+    if (uploadTokenInfo) return 0;
+    return MIN_DOCUMENTS;
   }
 
   document.getElementById('fcDocFinishBtn').addEventListener('click', function () {
@@ -1187,12 +1192,17 @@
 
     runSubmission()
       .then(function () {
+        var tokenToRevoke = uploadTokenRaw;
         profilePhotoPayload = null;
         fullPhotoPayload = null;
         documentPayloads = [];
         fcFormData = null;
         uploadTokenInfo = null;
+        uploadTokenRaw = '';
         uploadMode = false;
+        if (tokenToRevoke) {
+          Api.call('revokeCandidateUploadToken', { uploadToken: tokenToRevoke }).then(function () {}, function () {});
+        }
         showSuccess();
       })
       .catch(function (err) {
