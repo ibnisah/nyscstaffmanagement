@@ -5158,11 +5158,15 @@ const AdminPage = (function () {
           const generateUploadLinkBtn = document.getElementById('generateUploadLinkBtn');
           if (generateUploadLinkBtn && adminRole === 'SUPER_ADMIN') {
             generateUploadLinkBtn.addEventListener('click', async () => {
+              const defaultBaseUrl = window.location.origin + (window.location.pathname ? window.location.pathname.replace(/\/[^/]*$/, '') : '');
               const res = await Swal.fire({
                 title: 'Generate Upload Link',
                 html: `
-                  <p style="text-align: left; margin-bottom: 1rem; color: #4b5563;">Create a link for this candidate to upload missing profile picture, full picture, or documents. The link will expire after the chosen validity period.</p>
+                  <p style="text-align: left; margin-bottom: 1rem; color: #4b5563;">Create a link for this candidate to upload missing profile picture, full picture, or documents. The link opens the field capture page and shows only the selected upload types.</p>
                   <div style="text-align: left;">
+                    <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Frontend base URL *</label>
+                    <input id="genLinkBaseUrl" class="swal2-input" type="url" value="${(defaultBaseUrl || '').replace(/"/g, '&quot;')}" placeholder="e.g. https://yoursite.com" style="margin-bottom: 1rem;" />
+                    <p style="font-size: 0.85rem; color: #6b7280; margin: -0.5rem 0 1rem 0;">URL where hrm-field-capture.html is hosted (no trailing slash).</p>
                     <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Employee ID</label>
                     <input id="genLinkEmployeeId" class="swal2-input" value="${(employeeId || '').replace(/"/g, '&quot;')}" readonly style="background: #f3f4f6; margin-bottom: 1rem;" />
                     <label style="display: block; margin-bottom: 0.25rem; font-weight: 600;">Link validity (hours)</label>
@@ -5170,18 +5174,23 @@ const AdminPage = (function () {
                     <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Allow upload of:</label>
                     <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;"><input type="checkbox" id="genLinkProfile" checked /> Profile Picture</label>
                     <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;"><input type="checkbox" id="genLinkFull" checked /> Full Length Photo</label>
-                    <label style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" id="genLinkDocs" checked /> Documents (min 3)</label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem;"><input type="checkbox" id="genLinkDocs" checked /> Documents (min 3 if selected)</label>
                   </div>
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Generate Link',
                 preConfirm: async () => {
+                  const baseUrl = (document.getElementById('genLinkBaseUrl')?.value || '').trim().replace(/\/+$/, '');
                   const empId = document.getElementById('genLinkEmployeeId')?.value?.trim();
                   const hours = parseInt(document.getElementById('genLinkExpiryHours')?.value || '24', 10) || 24;
                   const types = [];
                   if (document.getElementById('genLinkProfile')?.checked) types.push('profilePicture');
                   if (document.getElementById('genLinkFull')?.checked) types.push('fullPicture');
                   if (document.getElementById('genLinkDocs')?.checked) types.push('documents');
+                  if (!baseUrl) {
+                    Swal.showValidationMessage('Frontend base URL is required (where hrm-field-capture.html is hosted).');
+                    return false;
+                  }
                   if (!empId) {
                     Swal.showValidationMessage('Employee ID is required.');
                     return false;
@@ -5195,7 +5204,8 @@ const AdminPage = (function () {
                       key: adminKey,
                       employeeId: empId,
                       expiryHours: Math.max(1, Math.min(720, hours)),
-                      uploadTypes: types
+                      uploadTypes: types,
+                      baseUrl: baseUrl
                     });
                     if (!linkRes || !linkRes.success || !linkRes.data) {
                       throw new Error(linkRes?.message || 'Failed to generate link.');
