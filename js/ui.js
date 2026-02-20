@@ -8128,9 +8128,40 @@ const AdminPage = (function () {
               if (loadFieldCaptureStats) loadFieldCaptureStats();
             } else if (action === 'findDuplicateEmployeeIds') {
               var dups = d.duplicateEmployeeIds || [];
-              fcRepairResult.innerHTML = dups.length === 0 ? 'No duplicate employee IDs found.' : '<strong>' + dups.length + ' duplicate employeeId group(s):</strong><pre style="margin: 0.5rem 0 0 0; font-size: 0.85rem; overflow-x: auto;">' + dups.map(function (x) { return x.employeeId + ' (' + x.formationId + '): ' + x.occurrences.length + ' occurrence(s)'; }).join('\n') + '</pre>';
+              function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+              if (dups.length === 0) {
+                fcRepairResult.innerHTML = 'No duplicate employee IDs found.';
+              } else {
+                var html = '<strong>' + dups.length + ' duplicate employeeId group(s):</strong>';
+                dups.forEach(function (x) {
+                  html += '<div style="margin-top: 0.75rem; padding: 0.5rem; background: #f8fafc; border-radius: 6px; font-size: 0.85rem;">';
+                  html += '<strong>' + esc(x.employeeId) + '</strong> (' + esc(x.formationId) + ') – ' + x.occurrences.length + ' occurrence(s):<ul style="margin: 0.35rem 0 0 1rem; padding-left: 1rem;">';
+                  (x.occurrences || []).forEach(function (occ) {
+                    html += '<li>' + esc(occ.sheet) + ' row ' + occ.row;
+                    if (occ.name || occ.telephone || occ.cadre) {
+                      html += ' — ' + [occ.name && ('Name: ' + esc(occ.name)), occ.telephone && ('Phone: ' + esc(occ.telephone)), occ.cadre && ('Cadre: ' + esc(occ.cadre))].filter(Boolean).join('; ');
+                    }
+                    html += '</li>';
+                  });
+                  html += '</ul></div>';
+                });
+                fcRepairResult.innerHTML = html;
+              }
             } else if (action === 'repairDuplicateEmployeeIds') {
-              fcRepairResult.textContent = res.message || 'Repaired ' + (d.repairedCount || 0) + ' duplicate(s).';
+              var changes = d.changes || [];
+              var msg = res.message || 'Repaired ' + (d.repairedCount || 0) + ' duplicate(s).';
+              if (changes.length > 0) {
+                var html = '<p style="margin-bottom: 0.5rem;">' + msg + '</p><strong>New IDs assigned:</strong><ul style="margin: 0.35rem 0 0 1rem; font-size: 0.85rem;">';
+                changes.forEach(function (c) {
+                  html += '<li><strong>' + (c.oldId || '') + '</strong> → <strong>' + (c.newId || '') + '</strong>';
+                  if (c.name || c.telephone || c.cadre) html += ' (' + [c.name, c.telephone, c.cadre].filter(Boolean).join(', ') + ')';
+                  html += '</li>';
+                });
+                html += '</ul>';
+                fcRepairResult.innerHTML = html;
+              } else {
+                fcRepairResult.textContent = msg;
+              }
               if (loadFieldCaptureCandidates) loadFieldCaptureCandidates();
               if (loadFieldCaptureStats) loadFieldCaptureStats();
             } else {
