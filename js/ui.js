@@ -4927,6 +4927,7 @@ const AdminPage = (function () {
                 ${canEdit ? `<button id="uploadFullPhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Full Photo</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
+                ${adminRole === 'SUPER_ADMIN' ? `<button id="deleteStaffCompletelyBtn" class="btn btn-danger" style="padding: 0.75rem 2rem; background-color: #991b1b; color: #fff; border-color: #991b1b;" title="Permanently delete this record and all documents; invite status becomes Pending so they can re-register">Delete Completely</button>` : ''}
               </div>
             </div>
               </div>
@@ -5112,6 +5113,7 @@ const AdminPage = (function () {
           
           const editBtn = document.getElementById('editStaffBtn');
           const archiveBtn = document.getElementById('archiveStaffBtn');
+          const deleteCompletelyBtn = document.getElementById('deleteStaffCompletelyBtn');
           const uploadDocBtn = document.getElementById('uploadDocBtn');
           const viewDocsBtn = document.getElementById('viewDocsBtn');
           const viewRecordOfServiceBtn = document.getElementById('viewRecordOfServiceBtn');
@@ -5143,6 +5145,32 @@ const AdminPage = (function () {
               }
               // Reload profile after archive/restore
               await showFullStaffProfile(employeeId, staff.formationId || '');
+            });
+          }
+
+          if (deleteCompletelyBtn) {
+            deleteCompletelyBtn.addEventListener('click', async () => {
+              const confirm = await Swal.fire({
+                title: 'Delete record completely?',
+                html: 'This will <strong>permanently delete</strong> this staff record, the employee record, all documents, and profile/full pictures. The invite status will be set back to <strong>Pending</strong> so the candidate can re-register. This cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Delete completely',
+                confirmButtonColor: '#991b1b',
+                cancelButtonText: 'Cancel'
+              });
+              if (!confirm.isConfirmed) return;
+              try {
+                UI.showLoading('Deleting', 'Removing record and all associated data...');
+                await Api.call('deleteStaffCompletely', { key: adminKey, employeeId, formationId: staff.formationId || '' });
+                UI.closeLoading();
+                Swal.close();
+                await UI.showSuccess('Deleted', 'Record and all associated data have been permanently deleted. Invite status is now Pending.');
+                loadStaffList(1);
+              } catch (err) {
+                UI.closeLoading();
+                await UI.showError('Error', err && err.message ? err.message : 'Delete failed.');
+              }
             });
           }
 
@@ -8076,14 +8104,16 @@ const AdminPage = (function () {
       var fcFindDupEmpIdsBtn = document.getElementById('fcFindDupEmpIdsBtn');
       var fcRepairDupEmpIdsBtn = document.getElementById('fcRepairDupEmpIdsBtn');
       var fcRepairResult = document.getElementById('fcRepairResult');
-      async function runRepairAction(action, btnEl) {
+      async function runRepairAction(action, btnEl, payload) {
         if (!fcRepairResult) return;
         fcRepairResult.style.display = 'block';
         fcRepairResult.className = 'info';
         fcRepairResult.textContent = 'Running...';
         if (btnEl) btnEl.disabled = true;
         try {
-          var res = await Api.call(action, { key: adminKey });
+          var req = payload || { key: adminKey };
+          if (!req.key) req.key = adminKey;
+          var res = await Api.call(action, req);
           if (res && res.success) {
             fcRepairResult.className = 'info';
             fcRepairResult.style.background = '#f0fdf4';
@@ -8123,8 +8153,18 @@ const AdminPage = (function () {
       });
       if (fcFindDupEmpIdsBtn) fcFindDupEmpIdsBtn.addEventListener('click', function () { runRepairAction('findDuplicateEmployeeIds', this); });
       if (fcRepairDupEmpIdsBtn) fcRepairDupEmpIdsBtn.addEventListener('click', async function () {
-        var ok = await Swal.fire({ title: 'Repair duplicate employee IDs?', text: 'Duplicate IDs will be assigned new unique IDs. All references will be updated. No data will be erased.', icon: 'question', showCancelButton: true, confirmButtonText: 'Yes', confirmButtonColor: '#6366f1' });
-        if (ok.isConfirmed) runRepairAction('repairDuplicateEmployeeIds', this);
+        var ok = await Swal.fire({
+          title: 'Repair duplicate employee IDs?',
+          html: '<p>Duplicate IDs will be assigned new unique IDs. All references will be updated.</p><label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.75rem;"><input type="checkbox" id="fcDeleteDocsAfterRepair"> Also clear all documents and pictures for the affected employee IDs (so you can send upload links for re-upload)</label>',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Yes',
+          confirmButtonColor: '#6366f1'
+        });
+        if (ok.isConfirmed) {
+          var deleteDocs = document.getElementById('fcDeleteDocsAfterRepair') && document.getElementById('fcDeleteDocsAfterRepair').checked;
+          runRepairAction('repairDuplicateEmployeeIds', this, { key: adminKey, deleteDocumentsAfterRepair: !!deleteDocs });
+        }
       });
       if (fcSection) {
         fcSection.addEventListener('click', function (e) {

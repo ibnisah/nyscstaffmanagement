@@ -1207,10 +1207,17 @@
       })
       .catch(function (err) {
         var msg = (err && err.message) ? err.message : 'Could not complete. Please try again.';
-        if (msg.toLowerCase().indexOf('timeout') !== -1 || msg.toLowerCase().indexOf('network') !== -1) {
-          msg = 'Upload timed out or failed. Please check your connection. You can verify your phone again to continue uploading.';
+        var isTimeout = msg.toLowerCase().indexOf('timeout') !== -1;
+        var isNetwork = msg.toLowerCase().indexOf('network') !== -1 || msg.toLowerCase().indexOf('fetch') !== -1;
+        if (isTimeout) {
+          msg = 'The request took too long. Your submission may have gone through. Before submitting again, please contact HR to check if your registration was received.';
+          Swal.fire({ icon: 'warning', title: 'Request timed out', text: msg });
+        } else if (isNetwork) {
+          msg = 'Connection problem. Please check your internet and try again. If it keeps failing, contact HR.';
+          Swal.fire({ icon: 'error', title: 'Connection failed', text: msg });
+        } else {
+          Swal.fire({ icon: 'error', title: 'Submission failed', text: msg });
         }
-        Swal.fire({ icon: 'error', title: 'Submission failed', text: msg });
       });
   });
 
