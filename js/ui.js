@@ -4139,10 +4139,11 @@ const AdminPage = (function () {
     const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
     const formationFilterEl = document.getElementById('hrmStaffFormationFilter');
     let formationIdForSearch = '';
-    if (formationFilterEl) {
+    if (adminRole === 'HRM_ADMIN_3') {
+      formationIdForSearch = '';
+    } else if (formationFilterEl) {
       formationIdForSearch = formationFilterEl.value || '';
     } else {
-      // Fallback for non-HRM roles
       formationIdForSearch = (adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN')
         ? (currentFormationId || adminFormationId || '')
         : (currentFormationId || adminFormationId || '');
@@ -4267,7 +4268,7 @@ const AdminPage = (function () {
           <td><span class="badge ${s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${s.status || 'ACTIVE'}</span></td>
           <td style="white-space: nowrap;">
             <button class="btn btn-xs btn-primary staff-btn-view" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="View full profile">View</button>
-            ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
+            ${(adminRole === 'SUPER_ADMIN' || (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3')) ? `
             <button class="btn btn-xs btn-secondary staff-btn-edit" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="Edit staff record">Edit</button>
             ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger staff-btn-archive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success staff-btn-unarchive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" title="Restore archived record">Restore</button>`}
             ` : ''}
@@ -4739,7 +4740,7 @@ const AdminPage = (function () {
         return String(dateValue);
       };
 
-      const canEdit = isHrmAdminActionRole(adminRole) || adminRole === 'SUPER_ADMIN';
+      const canEdit = (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3') || adminRole === 'SUPER_ADMIN';
       const canArchive = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1' || adminRole === 'HRM_ADMIN_2';
       const canRemoveReplaceDoc = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1';
 
@@ -7229,6 +7230,7 @@ const AdminPage = (function () {
     const actionsContainer = document.getElementById('hrmActions');
     if (!actionsContainer) return;
 
+    var isHrmViewOnly = (adminRole === 'HRM_ADMIN_3');
     let html = `
       <button class="action-btn active" data-view="dashboard">
         <span class="action-btn-icon">📊</span>
@@ -7254,6 +7256,7 @@ const AdminPage = (function () {
         <span class="action-btn-icon">🔄</span>
         <span>Transfers</span>
       </button>
+      ${!isHrmViewOnly ? `
       <button class="action-btn" data-view="fieldcapture">
         <span class="action-btn-icon">📱</span>
         <span>Field Capture</span>
@@ -7262,6 +7265,7 @@ const AdminPage = (function () {
         <span class="action-btn-icon">📋</span>
         <span>Posting Letter Stats</span>
       </button>
+      ` : ''}
     `;
 
     // Add admin actions for SUPER_ADMIN and HRM_ADMIN_1
@@ -7517,20 +7521,23 @@ const AdminPage = (function () {
             </div>
             ` : ''}
           </div>
-          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminActionRole(adminRole)) ? `
+          ${(adminRole === 'SUPER_ADMIN' || (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3')) ? `
           <div class="contextual-actions" style="margin-bottom: 1rem;">
             <button class="btn btn-primary" id="addStaffBtnInView" style="background: var(--nysc-green);">
               <span>➕ Add Staff</span>
             </button>
           </div>
           ` : ''}
-          ${(adminRole === 'SUPER_ADMIN' || isHrmAdminRole(adminRole)) ? `
+          ${(adminRole === 'SUPER_ADMIN' || (isHrmAdminRole(adminRole) && adminRole !== 'HRM_ADMIN_3')) ? `
           <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Formation Filter</label>
             <select id="hrmStaffFormationFilter" class="swal2-select" style="width: 100%; max-width: 300px; padding: 0.5rem;">
               <option value="">View All Staff Records</option>
             </select>
           </div>
+          ` : ''}
+          ${(adminRole === 'HRM_ADMIN_3') ? `
+          <p class="info info-muted" style="margin-bottom: 1rem;">Viewing all staff records (all formations). You can search and open full profiles.</p>
           ` : ''}
           <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
             <input 
