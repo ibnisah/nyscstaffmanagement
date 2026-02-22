@@ -1102,6 +1102,7 @@
     }
     Swal.fire({ title: 'Submitting...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
 
+    var UPLOAD_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
     function doUploads(empId, profTok, docTok, fullTok, subId) {
       var chain = Promise.resolve();
       if (profilePhotoPayload && profTok) {
@@ -1115,7 +1116,7 @@
             fileName: profilePhotoPayload.fileName,
             mimeType: profilePhotoPayload.mimeType,
             fileSize: profilePhotoPayload.fileSize
-          });
+          }, { timeout: UPLOAD_REQUEST_TIMEOUT_MS });
         });
       }
       if (fullPhotoPayload && fullTok) {
@@ -1129,7 +1130,7 @@
             fileName: fullPhotoPayload.fileName,
             mimeType: fullPhotoPayload.mimeType,
             fileSize: fullPhotoPayload.fileSize
-          });
+          }, { timeout: UPLOAD_REQUEST_TIMEOUT_MS });
         });
       }
       (documentPayloads || []).forEach(function (payload) {
@@ -1143,7 +1144,7 @@
             fileName: payload.fileName,
             mimeType: payload.mimeType,
             fileSize: payload.fileSize
-          });
+          }, { timeout: UPLOAD_REQUEST_TIMEOUT_MS });
         });
       });
       return chain;
@@ -1167,10 +1168,10 @@
           fullPhotoUploadToken,
           fcFormData.subUnitId || ''
         ).then(function () {
-          return Api.call('completeFieldCaptureRegistration', { sessionToken: sessionToken });
+          return Api.call('completeFieldCaptureRegistration', { sessionToken: sessionToken }, { timeout: UPLOAD_REQUEST_TIMEOUT_MS });
         });
       }
-      return Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: fcFormData })
+      return Api.call('createStaffFieldCapture', { sessionToken: sessionToken, staff: fcFormData }, { timeout: UPLOAD_REQUEST_TIMEOUT_MS })
         .then(function (res) {
           if (!res || !res.success || !res.data) {
             return Promise.reject(new Error((res && res.message) ? res.message : 'Registration failed.'));
@@ -1209,12 +1210,15 @@
         var msg = (err && err.message) ? err.message : 'Could not complete. Please try again.';
         var isTimeout = msg.toLowerCase().indexOf('timeout') !== -1;
         var isNetwork = msg.toLowerCase().indexOf('network') !== -1 || msg.toLowerCase().indexOf('fetch') !== -1;
+        var isExpiredOrUsed = (err && (err.reason === 'INVALID_OR_EXPIRED_TOKEN' || (msg.toLowerCase().indexOf('expired or already used') !== -1)));
         if (isTimeout) {
-          msg = 'The request took too long. Your submission may have gone through. Before submitting again, please contact HR to check if your registration was received.';
+          msg = 'The upload is taking longer than expected. Your photos or documents may still have been saved. Please contact HR to confirm before trying again.';
           Swal.fire({ icon: 'warning', title: 'Request timed out', text: msg });
         } else if (isNetwork) {
           msg = 'Connection problem. Please check your internet and try again. If it keeps failing, contact HR.';
           Swal.fire({ icon: 'error', title: 'Connection failed', text: msg });
+        } else if (isExpiredOrUsed) {
+          Swal.fire({ icon: 'warning', title: 'Link used or expired', text: msg });
         } else {
           Swal.fire({ icon: 'error', title: 'Submission failed', text: msg });
         }
