@@ -7732,6 +7732,13 @@ const AdminPage = (function () {
                 <button class="btn btn-primary" id="fcDedupeInvitesBtn" style="background: #6366f1;">Deduplicate invites</button>
                 <button class="btn btn-secondary" id="fcFindDupEmpIdsBtn">Find duplicate employee IDs</button>
                 <button class="btn btn-primary" id="fcRepairDupEmpIdsBtn" style="background: #6366f1;">Repair duplicate employee IDs</button>
+                <button class="btn btn-secondary" id="fcInitSystemRecordIdsBtn" style="display: none;">Initialize SystemRecordIDs</button>
+              </div>
+              <p class="info info-muted" style="margin-bottom: 0.5rem; font-size: 0.9rem;">SuperAdmin: folder and staff duplicate tools</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+                <button class="btn btn-secondary" id="fcFindDupFolderIdsBtn" style="display: none;">Find duplicate folder IDs</button>
+                <button class="btn btn-primary" id="fcRepairFolderCollisionsBtn" style="display: none; background: #6366f1;">Repair folder collisions (Safe Mode)</button>
+                <button class="btn btn-secondary" id="fcFindDupStaffEntriesBtn" style="display: none;">Find duplicate staff entries</button>
               </div>
               <div id="fcRepairResult" class="info" style="display: none; padding: 0.75rem; border-radius: 6px;"></div>
             </div>
@@ -8103,7 +8110,15 @@ const AdminPage = (function () {
       var fcDedupeInvitesBtn = document.getElementById('fcDedupeInvitesBtn');
       var fcFindDupEmpIdsBtn = document.getElementById('fcFindDupEmpIdsBtn');
       var fcRepairDupEmpIdsBtn = document.getElementById('fcRepairDupEmpIdsBtn');
+      var fcInitSystemRecordIdsBtn = document.getElementById('fcInitSystemRecordIdsBtn');
+      var fcFindDupFolderIdsBtn = document.getElementById('fcFindDupFolderIdsBtn');
+      var fcRepairFolderCollisionsBtn = document.getElementById('fcRepairFolderCollisionsBtn');
+      var fcFindDupStaffEntriesBtn = document.getElementById('fcFindDupStaffEntriesBtn');
       var fcRepairResult = document.getElementById('fcRepairResult');
+      if (fcInitSystemRecordIdsBtn) fcInitSystemRecordIdsBtn.style.display = (typeof adminRole !== 'undefined' && adminRole === 'SUPER_ADMIN') ? '' : 'none';
+      if (fcFindDupFolderIdsBtn) fcFindDupFolderIdsBtn.style.display = (typeof adminRole !== 'undefined' && adminRole === 'SUPER_ADMIN') ? '' : 'none';
+      if (fcRepairFolderCollisionsBtn) fcRepairFolderCollisionsBtn.style.display = (typeof adminRole !== 'undefined' && adminRole === 'SUPER_ADMIN') ? '' : 'none';
+      if (fcFindDupStaffEntriesBtn) fcFindDupStaffEntriesBtn.style.display = (typeof adminRole !== 'undefined' && adminRole === 'SUPER_ADMIN') ? '' : 'none';
       async function runRepairAction(action, btnEl, payload) {
         if (!fcRepairResult) return;
         fcRepairResult.style.display = 'block';
@@ -8164,6 +8179,48 @@ const AdminPage = (function () {
               }
               if (loadFieldCaptureCandidates) loadFieldCaptureCandidates();
               if (loadFieldCaptureStats) loadFieldCaptureStats();
+            } else if (action === 'backfillSystemRecordIDs') {
+              fcRepairResult.textContent = res.message || ('Updated ' + (d.updated || 0) + ' of ' + (d.totalRows || 0) + ' row(s) with SystemRecordID.');
+            } else if (action === 'findDuplicateFolderIds') {
+              var folderDups = d.duplicateFolderIds || [];
+              function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+              if (folderDups.length === 0) {
+                fcRepairResult.innerHTML = 'No duplicate folder IDs found.';
+              } else {
+                var html = '<strong>' + folderDups.length + ' folder ID collision(s):</strong>';
+                folderDups.forEach(function (x) {
+                  html += '<div style="margin-top: 0.75rem; padding: 0.5rem; background: #fef3c7; border-radius: 6px; font-size: 0.85rem;">';
+                  html += 'Folder ID: <code>' + esc(x.folderId) + '</code> – ' + (x.occurrences || []).length + ' row(s):<ul style="margin: 0.35rem 0 0 1rem;">';
+                  (x.occurrences || []).forEach(function (occ) {
+                    html += '<li>Row ' + occ.sheetRow + ' — ' + esc(occ.name || occ.employeeId) + (occ.telephone ? ' · ' + esc(occ.telephone) : '') + (occ.systemRecordID ? ' (SystemRecordID: ' + esc(occ.systemRecordID) + ')' : '') + '</li>';
+                  });
+                  html += '</ul></div>';
+                });
+                fcRepairResult.innerHTML = html;
+              }
+            } else if (action === 'repairDuplicateFolderIDs') {
+              fcRepairResult.textContent = res.message || ('Repaired ' + (d.repaired || 0) + ' record(s); ' + (d.totalCollisions || 0) + ' collision group(s).');
+            } else if (action === 'findDuplicateStaffEntries') {
+              var staffDups = d.duplicateStaffGroups || [];
+              function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+              if (staffDups.length === 0) {
+                fcRepairResult.innerHTML = 'No duplicate staff entries (same phone) found.';
+              } else {
+                var html = '<strong>' + staffDups.length + ' duplicate staff group(s) (same phone):</strong> Use "Delete this one" to remove a duplicate row. Keep one, delete the others.';
+                staffDups.forEach(function (grp) {
+                  html += '<div style="margin-top: 0.75rem; padding: 0.5rem; background: #fef3c7; border-radius: 6px; font-size: 0.85rem;">';
+                  html += 'Phone: <code>' + esc(grp.key) + '</code> – ' + (grp.occurrences || []).length + ' row(s):<ul style="margin: 0.35rem 0 0 1rem;">';
+                  (grp.occurrences || []).forEach(function (occ) {
+                    html += '<li>Row ' + occ.sheetRow + ' — ' + esc(occ.name || occ.employeeId) + ' · ' + esc(occ.telephone) + (occ.formationId ? ' (' + esc(occ.formationId) + ')' : '');
+                    if (occ.systemRecordID) {
+                      html += ' <button type="button" class="btn btn-secondary fc-delete-one-staff" data-system-record-id="' + esc(occ.systemRecordID) + '" style="margin-left: 0.5rem; padding: 0.2rem 0.5rem; font-size: 0.8rem;">Delete this one</button>';
+                    }
+                    html += '</li>';
+                  });
+                  html += '</ul></div>';
+                });
+                fcRepairResult.innerHTML = html;
+              }
             } else {
               fcRepairResult.textContent = res.message || 'Done.';
             }
@@ -8197,6 +8254,39 @@ const AdminPage = (function () {
           runRepairAction('repairDuplicateEmployeeIds', this, { key: adminKey, deleteDocumentsAfterRepair: !!deleteDocs });
         }
       });
+      if (fcInitSystemRecordIdsBtn) fcInitSystemRecordIdsBtn.addEventListener('click', async function () {
+        var ok = await Swal.fire({ title: 'Initialize SystemRecordIDs?', text: 'Empty SystemRecordID cells will be filled with a unique ID. Existing values will not be changed. Safe to run multiple times.', icon: 'question', showCancelButton: true, confirmButtonText: 'Yes', confirmButtonColor: '#6366f1' });
+        if (ok.isConfirmed) runRepairAction('backfillSystemRecordIDs', this);
+      });
+      if (fcFindDupFolderIdsBtn) fcFindDupFolderIdsBtn.addEventListener('click', function () { runRepairAction('findDuplicateFolderIds', this); });
+      if (fcRepairFolderCollisionsBtn) fcRepairFolderCollisionsBtn.addEventListener('click', async function () {
+        var ok = await Swal.fire({ title: 'Repair folder collisions?', text: 'Duplicate FolderIDs will get new folders (HRM_ + SystemRecordID) in HRM_ROOT. First record in each group unchanged. No files moved. Safe to run multiple times.', icon: 'question', showCancelButton: true, confirmButtonText: 'Yes', confirmButtonColor: '#6366f1' });
+        if (ok.isConfirmed) runRepairAction('repairDuplicateFolderIDs', this);
+      });
+      if (fcFindDupStaffEntriesBtn) fcFindDupStaffEntriesBtn.addEventListener('click', function () { runRepairAction('findDuplicateStaffEntries', this); });
+      if (fcRepairResult) {
+        fcRepairResult.addEventListener('click', async function (e) {
+          var delBtn = e.target.closest('.fc-delete-one-staff');
+          if (!delBtn) return;
+          var systemRecordID = delBtn.getAttribute('data-system-record-id');
+          if (!systemRecordID) return;
+          var ok = await Swal.fire({ title: 'Delete this staff row?', text: 'This removes only this row from Staff_Records. It does not delete Employees or Drive files. Use to remove a duplicate entry.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Delete', confirmButtonColor: '#dc2626' });
+          if (!ok.isConfirmed) return;
+          delBtn.disabled = true;
+          try {
+            var res = await Api.call('deleteOneStaffRecord', { key: adminKey, systemRecordID: systemRecordID });
+            if (res && res.success) {
+              Swal.fire({ title: 'Deleted', text: res.message || 'Row deleted.', icon: 'success', timer: 2000 });
+              runRepairAction('findDuplicateStaffEntries', fcFindDupStaffEntriesBtn);
+            } else {
+              Swal.fire({ title: 'Error', text: (res && res.message) ? res.message : 'Delete failed.', icon: 'error' });
+            }
+          } catch (err) {
+            Swal.fire({ title: 'Error', text: (err && err.message) ? err.message : 'Request failed.', icon: 'error' });
+          }
+          delBtn.disabled = false;
+        });
+      }
       if (fcSection) {
         fcSection.addEventListener('click', function (e) {
           var btn = e.target.closest('.fc-page-btn');
