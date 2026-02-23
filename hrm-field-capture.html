@@ -1150,6 +1150,8 @@
       return chain;
     }
 
+    var registrationAlreadySaved = false; // true after createStaffFieldCapture succeeds (so we can show a friendly message if uploads fail)
+
     function runSubmission() {
       if (uploadTokenInfo) {
         return doUploads(
@@ -1176,6 +1178,7 @@
           if (!res || !res.success || !res.data) {
             return Promise.reject(new Error((res && res.message) ? res.message : 'Registration failed.'));
           }
+          registrationAlreadySaved = true;
           var empId = res.data.employeeId;
           uploadEmployeeId = empId;
           var subId = (res.data.subUnitId || fcFormData.subUnitId || '').toString();
@@ -1201,6 +1204,7 @@
         uploadTokenInfo = null;
         uploadTokenRaw = '';
         uploadMode = false;
+        registrationAlreadySaved = false;
         if (tokenToRevoke) {
           Api.call('revokeCandidateUploadToken', { uploadToken: tokenToRevoke }).then(function () {}, function () {});
         }
@@ -1211,7 +1215,10 @@
         var isTimeout = msg.toLowerCase().indexOf('timeout') !== -1;
         var isNetwork = msg.toLowerCase().indexOf('network') !== -1 || msg.toLowerCase().indexOf('fetch') !== -1;
         var isExpiredOrUsed = (err && (err.reason === 'INVALID_OR_EXPIRED_TOKEN' || (msg.toLowerCase().indexOf('expired or already used') !== -1)));
-        if (isTimeout) {
+        if (registrationAlreadySaved) {
+          msg = 'Your registration was saved. Some photos or documents could not be uploaded. Please contact HR to add them or try again. You can verify your phone again to continue uploading.';
+          Swal.fire({ icon: 'warning', title: 'Upload incomplete', text: msg });
+        } else if (isTimeout) {
           msg = 'The upload is taking longer than expected. Your photos or documents may still have been saved. Please contact HR to confirm before trying again.';
           Swal.fire({ icon: 'warning', title: 'Request timed out', text: msg });
         } else if (isNetwork) {
