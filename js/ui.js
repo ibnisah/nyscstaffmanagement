@@ -3092,6 +3092,7 @@ const AdminPage = (function () {
 
         if (documents.length === 0) {
           await UI.showInfo('Documents', 'No documents found for this employee.');
+          if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
           return;
         }
 
@@ -3148,11 +3149,14 @@ const AdminPage = (function () {
             htmlContainer: 'swal2-html-container-wide'
           }
         });
+        if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
       } else {
         await UI.showInfo('Documents', 'No documents found for this employee.');
+        if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
       }
     } catch (err) {
       await UI.showError('Error', err.message || 'Failed to load documents.');
+      if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
     }
   }
 
@@ -3280,9 +3284,9 @@ const AdminPage = (function () {
   // ============================================================================
 
   let currentStaffPage = 1;
-  let currentStaffLimit = 20; // 20 rows per page (classic pagination)
+  let currentStaffLimit = 10; // 10 rows per page (classic pagination)
 
-  var STAFF_TABLE_PAGE_SIZE = 20; // rows per page: Page 1 = 1–20, Page 2 = 21–40, etc.
+  var STAFF_TABLE_PAGE_SIZE = 10; // rows per page: Page 1 = 1–10, Page 2 = 11–20, etc.
 
   // Staff record state and cache (keep): current open record; cache by SystemRecordID for instant reopen and preload
   if (typeof window.staffRecordCache === 'undefined') window.staffRecordCache = {};
@@ -4395,6 +4399,11 @@ const AdminPage = (function () {
 
     if (query) showSearchSpinner();
     var filtered = searchStaffRecords(query);
+    filtered = filtered.filter(function (r) {
+      var sid = r.systemRecordID && String(r.systemRecordID).trim();
+      var nm = (r.name && String(r.name).trim()) || (r.surname && String(r.surname).trim()) || (r.otherNames && String(r.otherNames).trim());
+      return sid || nm;
+    });
     if (query) hideSearchSpinner();
 
     var total = filtered.length;
@@ -9032,6 +9041,8 @@ const AdminPage = (function () {
           });
         }
       }
+    }).then(function () {
+      if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
     });
   }
 
