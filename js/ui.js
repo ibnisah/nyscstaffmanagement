@@ -626,6 +626,7 @@ const AdminPage = (function () {
     safeAddEventListener('hrmStaffClearSearchBtn', 'click', () => {
       const searchInput = document.getElementById('hrmStaffSearchInput');
       if (searchInput) searchInput.value = '';
+      showTableAreaSpinner('Loading...');
       loadStaffList(1);
     });
     safeAddEventListener('hrmIncludeArchivedCheck', 'change', () => loadStaffList(1));
@@ -4167,20 +4168,17 @@ const AdminPage = (function () {
     });
   }
 
-  function showSearchSpinner() {
+  function showTableAreaSpinner(message) {
+    var container = document.getElementById('hrmStaffTable');
+    if (!container) return;
     if (!document.getElementById('staffTableSpinnerStyle')) {
       var style = document.createElement('style');
       style.id = 'staffTableSpinnerStyle';
       style.textContent = '@keyframes staffTableSpin { to { transform: rotate(360deg); } }';
       document.head.appendChild(style);
     }
-    var el = document.getElementById('hrmSearchSpinner');
-    if (el) el.style.display = 'block';
-  }
-
-  function hideSearchSpinner() {
-    var el = document.getElementById('hrmSearchSpinner');
-    if (el) el.style.display = 'none';
+    var msg = message || 'Loading...';
+    container.innerHTML = '<div class="staff-table-loading" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:2rem;color:#666;"><span style="width:20px;height:20px;border:2px solid #e5e7eb;border-top-color:#059669;border-radius:50%;animation:staffTableSpin 0.8s linear infinite;"></span> ' + msg + '</div>';
   }
 
   /**
@@ -4333,6 +4331,12 @@ const AdminPage = (function () {
     } else if (paginationEl) {
       paginationEl.innerHTML = '';
     }
+    if (container) {
+      container.scrollTop = 0;
+      if (container.scrollIntoView) {
+        container.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }
+    }
   }
 
   /**
@@ -4372,7 +4376,11 @@ const AdminPage = (function () {
     var pageSize = STAFF_TABLE_PAGE_SIZE;
 
     if (!window.staffTableCache || !Array.isArray(window.staffTableCache.data) || window.staffTableCache.data.length === 0) {
-      showStaffTableSpinner();
+      if (query) {
+        showTableAreaSpinner('Searching...');
+      } else {
+        showStaffTableSpinner();
+      }
       try {
         var res = await Api.call('getStaffTableLightweight', { key: adminKey });
         if (!res || !res.success || !res.data) {
@@ -4397,14 +4405,15 @@ const AdminPage = (function () {
       return loadStaffList(currentStaffPage);
     }
 
-    if (query) showSearchSpinner();
+    if (query) {
+      showTableAreaSpinner('Searching...');
+    }
     var filtered = searchStaffRecords(query);
     filtered = filtered.filter(function (r) {
       var sid = r.systemRecordID && String(r.systemRecordID).trim();
       var nm = (r.name && String(r.name).trim()) || (r.surname && String(r.surname).trim()) || (r.otherNames && String(r.otherNames).trim());
       return sid || nm;
     });
-    if (query) hideSearchSpinner();
 
     var total = filtered.length;
     var totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -4477,6 +4486,7 @@ const AdminPage = (function () {
     if (!window.AdminPage) window.AdminPage = {};
     window.AdminPage.loadStaffList = loadStaffList;
     window.AdminPage.loadStaffListPage = loadStaffListPage;
+    window.AdminPage.showTableAreaSpinner = showTableAreaSpinner;
     window.AdminPage.searchStaffRecords = searchStaffRecords;
     window.AdminPage.renderStaffTable = renderStaffTable;
     window.AdminPage.renderStaffDetail = renderStaffDetail;
@@ -7708,15 +7718,14 @@ const AdminPage = (function () {
           <p class="info info-muted" style="margin-bottom: 1rem;">Viewing all staff records (all formations). You can search and open full profiles.</p>
           ` : ''}
           <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
-            <div style="display: flex; align-items: center; flex: 1; min-width: 200px; position: relative;">
+            <div style="display: flex; align-items: center; flex: 1; min-width: 200px;">
               <input 
                 type="text" 
                 id="hrmStaffSearchInput" 
                 class="swal2-input" 
                 placeholder="Search by name, phone number, or file number..." 
-                style="flex: 1; margin: 0; padding-right: 2rem;"
+                style="flex: 1; margin: 0;"
               />
-              <span id="hrmSearchSpinner" class="hrm-search-spinner" style="display: none; position: absolute; right: 0.5rem; width: 18px; height: 18px; border: 2px solid #e5e7eb; border-top-color: #059669; border-radius: 50%; animation: staffTableSpin 0.8s linear infinite; pointer-events: none;"></span>
             </div>
             <button class="btn btn-secondary" id="hrmStaffSearchBtn">Search</button>
             <button class="btn btn-secondary" id="hrmStaffClearSearchBtn">Clear</button>
@@ -7782,6 +7791,9 @@ const AdminPage = (function () {
         clearBtn.addEventListener('click', () => {
           if (searchInput) searchInput.value = '';
           if (formationFilterEl) formationFilterEl.value = '';
+          var showSpinner = (window.AdminPage && typeof window.AdminPage.showTableAreaSpinner === 'function')
+            ? window.AdminPage.showTableAreaSpinner : null;
+          if (showSpinner) showSpinner('Loading...');
           if (loadStaffListFn) loadStaffListFn(1);
         });
       }
