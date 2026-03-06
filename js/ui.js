@@ -404,35 +404,37 @@ const AdminPage = (function () {
 
   let currentModule = null;
 
+  // TEMPORARILY DISABLED: Auto logout so HR staff are not logged out during long review sessions.
+  // To re-enable: uncomment the block below and the setupInactivityTimer() call when admin view is shown.
   const ADMIN_INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
   let inactivityTimer = null;
 
-  function resetInactivityTimer() {
-    if (!adminKey) return;
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-    inactivityTimer = setTimeout(() => {
-      inactivityTimer = null;
-      handleLogout();
-      window.location.href = 'admin.html';
-    }, ADMIN_INACTIVITY_MS);
-  }
+  // function resetInactivityTimer() {
+  //   if (!adminKey) return;
+  //   if (inactivityTimer) clearTimeout(inactivityTimer);
+  //   inactivityTimer = setTimeout(() => {
+  //     inactivityTimer = null;
+  //     handleLogout();
+  //     window.location.href = 'admin.html';
+  //   }, ADMIN_INACTIVITY_MS);
+  // }
 
-  function setupInactivityTimer() {
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
-    events.forEach(ev => {
-      document.removeEventListener(ev, resetInactivityTimer);
-      document.addEventListener(ev, resetInactivityTimer);
-    });
-    resetInactivityTimer();
-  }
+  // function setupInactivityTimer() {
+  //   const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+  //   events.forEach(ev => {
+  //     document.removeEventListener(ev, resetInactivityTimer);
+  //     document.addEventListener(ev, resetInactivityTimer);
+  //   });
+  //   resetInactivityTimer();
+  // }
 
   function clearInactivityTimer() {
     if (inactivityTimer) {
       clearTimeout(inactivityTimer);
       inactivityTimer = null;
     }
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
-    events.forEach(ev => document.removeEventListener(ev, resetInactivityTimer));
+    // const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+    // events.forEach(ev => document.removeEventListener(ev, resetInactivityTimer));
   }
 
   // Helper function to check if a role is any HRM admin role
@@ -709,7 +711,7 @@ const AdminPage = (function () {
 
       adminToken = res.data.adminToken;
       adminKey = key;
-      setupInactivityTimer();
+      // setupInactivityTimer(); // TEMPORARILY DISABLED - see resetInactivityTimer/setupInactivityTimer above
       adminRole = res.data.role;
       adminFormationId = res.data.formationId;
       adminDepartmentId = res.data.departmentId;
@@ -3278,7 +3280,13 @@ const AdminPage = (function () {
   // ============================================================================
 
   let currentStaffPage = 1;
-  let currentStaffLimit = 10; // 10 entries per page
+  let currentStaffLimit = 20; // 20 rows per page (classic pagination)
+
+  var STAFF_TABLE_PAGE_SIZE = 20; // rows per page: Page 1 = 1–20, Page 2 = 21–40, etc.
+
+  // Staff record state and cache (keep): current open record; cache by SystemRecordID for instant reopen and preload
+  if (typeof window.staffRecordCache === 'undefined') window.staffRecordCache = {};
+  if (typeof window.currentStaffRecord === 'undefined') window.currentStaffRecord = null;
 
   /**
    * Load HRM notifications (requests for approval or own request statuses)
@@ -4116,7 +4124,216 @@ const AdminPage = (function () {
   }
 
   /**
-   * Load staff list with pagination
+   * Filter staff records from window.staffTableCache by query (and current formation/archived filters).
+   * Search is case-insensitive: Name, Phone, File Number. Does NOT call the backend.
+   * @param {string} query - Search term (trimmed; empty = show all)
+   * @returns {Array} Filtered array of staff records
+   */
+  function searchStaffRecords(query) {
+    if (!window.staffTableCache || !Array.isArray(window.staffTableCache.data) || window.staffTableCache.data.length === 0) {
+      return [];
+    }
+    var data = window.staffTableCache.data;
+
+    var q = (query || '').trim();
+    var queryLower = q.toLowerCase();
+    var formationFilterEl = document.getElementById('hrmStaffFormationFilter');
+    var formationIdForSearch = '';
+    if (formationFilterEl) formationIdForSearch = (formationFilterEl.value || '').trim();
+    var includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
+
+    return data.filter(function (s) {
+      if (formationIdForSearch && String(s.formationId || '').trim() !== String(formationIdForSearch).trim()) return false;
+      if (!includeArchived && (s.status === 'ARCHIVED')) return false;
+      if (!q) return true;
+
+      var fileNumber = String(s.fileNumber || '').toLowerCase();
+      var name = String(s.name || '').toLowerCase();
+      var surname = String(s.surname || '').toLowerCase();
+      var otherNames = String(s.otherNames || '').toLowerCase();
+      var fullName = (surname + ' ' + otherNames + ' ' + name).replace(/\s+/g, ' ').trim();
+      var phone = String(s.telephone || '').replace(/\D/g, '');
+      var queryDigits = queryLower.replace(/\D/g, '');
+
+      var matchFileNumber = fileNumber.indexOf(queryLower) !== -1;
+      var matchName = fullName.indexOf(queryLower) !== -1 || name.indexOf(queryLower) !== -1 || surname.indexOf(queryLower) !== -1 || otherNames.indexOf(queryLower) !== -1;
+      var matchPhone = queryDigits.length > 0 && phone.indexOf(queryDigits) !== -1;
+
+      return matchFileNumber || matchName || matchPhone;
+    });
+  }
+
+  function showSearchSpinner() {
+    if (!document.getElementById('staffTableSpinnerStyle')) {
+      var style = document.createElement('style');
+      style.id = 'staffTableSpinnerStyle';
+      style.textContent = '@keyframes staffTableSpin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(style);
+    }
+    var el = document.getElementById('hrmSearchSpinner');
+    if (el) el.style.display = 'block';
+  }
+
+  function hideSearchSpinner() {
+    var el = document.getElementById('hrmSearchSpinner');
+    if (el) el.style.display = 'none';
+  }
+
+  /**
+   * Show inline loading spinner in staff table container
+   */
+  function showStaffTableSpinner() {
+    var container = document.getElementById('hrmStaffTable');
+    if (!container) return;
+    container.innerHTML = '<div id="staffTableSpinner" class="staff-table-loading" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:2rem;color:#666;"><span style="width:20px;height:20px;border:2px solid #e5e7eb;border-top-color:#059669;border-radius:50%;animation:staffTableSpin 0.8s linear infinite;"></span> Loading staff records...</div>';
+    if (!document.getElementById('staffTableSpinnerStyle')) {
+      var style = document.createElement('style');
+      style.id = 'staffTableSpinnerStyle';
+      style.textContent = '@keyframes staffTableSpin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(style);
+    }
+  }
+
+  /**
+   * Render the staff table and pagination. Receives the (filtered and paginated) dataset; no backend calls.
+   * @param {HTMLElement} container - #hrmStaffTable element
+   * @param {Array} staff - Staff records for current page
+   * @param {Object} pagination - { page, limit, total, totalPages, hasPrev, hasNext }
+   * @param {Object} formationMap - formationId -> name
+   * @param {Object} departmentMap - subUnitId -> name
+   */
+  function renderStaffTable(container, staff, pagination, formationMap, departmentMap) {
+    if (!container) return;
+    var serialOffset = (pagination.page - 1) * (pagination.limit || currentStaffLimit) || 0;
+    var html = '<table class="data-table"><thead><tr><th>S/N</th><th>File Number</th><th>Name</th><th>Cadre</th><th>Rank</th><th>Grade Level</th><th>Formation</th><th>Department</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+
+    for (var idx = 0; idx < staff.length; idx++) {
+      var s = staff[idx];
+      var serialNumber = serialOffset + idx + 1;
+      var dobDisplay = 'N/A';
+      if (s.dob) {
+        try {
+          var dobValue = s.dob;
+          if (typeof dobValue === 'string' && !dobValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+            dobDisplay = dobValue;
+          } else {
+            var dobDate = new Date(dobValue);
+            if (!isNaN(dobDate.getTime())) {
+              dobDisplay = dobDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            } else {
+              dobDisplay = String(dobValue);
+            }
+          }
+        } catch (e) {
+          dobDisplay = String(s.dob);
+        }
+      }
+      var gradeLevelDisplay = 'N/A';
+      if (s.gradeLevel !== null && s.gradeLevel !== undefined && s.gradeLevel !== '') {
+        gradeLevelDisplay = String(s.gradeLevel);
+      }
+      var formationName = s.formationId ? (formationMap[s.formationId] || 'Not Assigned') : 'Not Assigned';
+      var departmentName = s.subUnitId ? (departmentMap[s.subUnitId] || 'Not Assigned') : 'Not Assigned';
+      var staffName = (s.surname || '') + (s.otherNames ? ' ' + s.otherNames : '') || s.name || 'N/A';
+      var sysId = String(s.systemRecordID || '').replace(/"/g, '&quot;');
+      var empIdAttr = String(s.employeeId || '').replace(/"/g, '&quot;');
+      var formIdAttr = String(s.formationId || '').replace(/"/g, '&quot;');
+      html += '<tr data-system-record-id="' + sysId + '" data-employee-id="' + empIdAttr + '" data-formation-id="' + formIdAttr + '">' +
+        '<td>' + serialNumber + '</td>' +
+        '<td>' + (s.fileNumber || 'N/A') + '</td>' +
+        '<td><span class="staff-name-link" data-employee-id="' + String(s.employeeId || '').replace(/"/g, '&quot;') + '" data-formation-id="' + String(s.formationId || '').replace(/"/g, '&quot;') + '" data-system-record-id="' + sysId + '" title="View full profile" style="cursor: pointer; color: var(--nysc-green, #059669); font-weight: bold;">' + staffName + '</span></td>' +
+        '<td>' + (s.cadre || 'N/A') + '</td>' +
+        '<td>' + (s.rank || 'N/A') + '</td>' +
+        '<td>' + gradeLevelDisplay + '</td>' +
+        '<td>' + formationName + '</td>' +
+        '<td>' + departmentName + '</td>' +
+        '<td><span class="badge ' + (s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning') + '">' + (s.status || 'ACTIVE') + '</span></td>' +
+        '<td style="white-space: nowrap;">' +
+        '<button class="btn btn-xs btn-primary staff-btn-view" data-employee-id="' + String(s.employeeId || '').replace(/"/g, '&quot;') + '" data-formation-id="' + String(s.formationId || '').replace(/"/g, '&quot;') + '" data-system-record-id="' + sysId + '" title="View full profile">View</button>' +
+        (adminRole === 'SUPER_ADMIN' || (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3') ?
+          '<button class="btn btn-xs btn-secondary staff-btn-edit" data-employee-id="' + String(s.employeeId || '').replace(/"/g, '&quot;') + '" data-formation-id="' + String(s.formationId || '').replace(/"/g, '&quot;') + '" data-system-record-id="' + sysId + '" title="Edit staff record">Edit</button>' +
+          (s.status !== 'ARCHIVED' ?
+            '<button class="btn btn-xs btn-danger staff-btn-archive" data-employee-id="' + String(s.employeeId || '').replace(/"/g, '&quot;') + '" data-system-record-id="' + sysId + '" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" title="Archive/Delete staff record">Archive</button>' :
+            '<button class="btn btn-xs btn-success staff-btn-unarchive" data-employee-id="' + String(s.employeeId || '').replace(/"/g, '&quot;') + '" data-formation-id="' + String(s.formationId || '').replace(/"/g, '&quot;') + '" data-system-record-id="' + sysId + '" title="Restore archived record">Restore</button>') :
+          '') +
+        '</td></tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    if (container._staffTableHandler) {
+      container.removeEventListener('click', container._staffTableHandler);
+    }
+    container._staffTableHandler = function (e) {
+      var nameLink = e.target.closest('.staff-name-link');
+      if (nameLink && nameLink.dataset.employeeId) {
+        AdminPage.showFullStaffProfile(nameLink.dataset.employeeId, nameLink.dataset.formationId || '', nameLink.dataset.systemRecordId || '');
+        return;
+      }
+      var btn = e.target.closest('.staff-btn-view, .staff-btn-edit, .staff-btn-archive, .staff-btn-unarchive');
+      if (!btn || !btn.dataset.employeeId) return;
+      var empId = btn.dataset.employeeId;
+      var formId = btn.dataset.formationId || '';
+      var sysId = btn.dataset.systemRecordId || '';
+      if (btn.classList.contains('staff-btn-view')) AdminPage.showFullStaffProfile(empId, formId, sysId);
+      else if (btn.classList.contains('staff-btn-edit')) AdminPage.editStaff(empId, formId, sysId);
+      else if (btn.classList.contains('staff-btn-archive')) AdminPage.archiveStaffConfirm(empId);
+      else if (btn.classList.contains('staff-btn-unarchive')) AdminPage.unarchiveStaff(empId, formId);
+    };
+    container.addEventListener('click', container._staffTableHandler);
+
+    if (container._staffTableHoverHandler) {
+      container.removeEventListener('mouseenter', container._staffTableHoverHandler, true);
+    }
+    container._staffTableHoverHandler = function (e) {
+      var row = e.target.closest('tr[data-system-record-id]');
+      if (!row) return;
+      var sysId = row.getAttribute('data-system-record-id');
+      var empId = row.getAttribute('data-employee-id');
+      var formId = row.getAttribute('data-formation-id') || '';
+      if (sysId || empId) preloadStaffRecord(sysId, empId, formId);
+    };
+    container.addEventListener('mouseenter', container._staffTableHoverHandler, true);
+
+    var paginationEl = document.getElementById('hrmStaffPagination');
+    if (paginationEl && pagination.totalPages > 1) {
+      var paginationHtml = '<div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">';
+      if (pagination.hasPrev) {
+        paginationHtml += '<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(' + (pagination.page - 1) + ')">Previous</button>';
+      }
+      var totalPages = pagination.totalPages;
+      var currentPage = pagination.page;
+      var startPage = Math.max(1, currentPage - 2);
+      var endPage = Math.min(totalPages, currentPage + 2);
+      if (startPage > 1) {
+        paginationHtml += '<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(1)">1</button>';
+        if (startPage > 2) paginationHtml += '<span style="padding: 0 0.5rem;">...</span>';
+      }
+      for (var p = startPage; p <= endPage; p++) {
+        if (p === currentPage) {
+          paginationHtml += '<button class="btn btn-sm btn-primary" style="background: var(--nysc-green);" disabled>' + p + '</button>';
+        } else {
+          paginationHtml += '<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(' + p + ')">' + p + '</button>';
+        }
+      }
+      if (endPage < totalPages) {
+        if (endPage < totalPages - 1) paginationHtml += '<span style="padding: 0 0.5rem;">...</span>';
+        paginationHtml += '<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(' + totalPages + ')">' + totalPages + '</button>';
+      }
+      paginationHtml += '<span style="margin: 0 0.5rem; color: #666;">Page ' + currentPage + ' of ' + totalPages + ' (' + pagination.total + ' total)</span>';
+      if (pagination.hasNext) {
+        paginationHtml += '<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(' + (pagination.page + 1) + ')">Next</button>';
+      }
+      paginationHtml += '</div>';
+      paginationEl.innerHTML = paginationHtml;
+    } else if (paginationEl) {
+      paginationEl.innerHTML = '';
+    }
+  }
+
+  /**
+   * Load staff list: classic pagination. Fetch all staff once (lightweight), store in window.staffTableCache.
+   * Pagination: pageData = staffTableCache.slice((page-1)*20, page*20). Replace table with next slice on page change.
    */
   async function loadStaffList(page = null) {
     var container = document.getElementById('hrmStaffTable');
@@ -4135,10 +4352,9 @@ const AdminPage = (function () {
       currentStaffPage = page;
     }
 
-    const query = document.getElementById('hrmStaffSearchInput')?.value.trim() || '';
-    const includeArchived = document.getElementById('hrmIncludeArchivedCheck')?.checked || false;
-    const formationFilterEl = document.getElementById('hrmStaffFormationFilter');
-    let formationIdForSearch = '';
+    var query = (document.getElementById('hrmStaffSearchInput') && document.getElementById('hrmStaffSearchInput').value) ? document.getElementById('hrmStaffSearchInput').value.trim() : '';
+    var formationFilterEl = document.getElementById('hrmStaffFormationFilter');
+    var formationIdForSearch = '';
     if (adminRole === 'HRM_ADMIN_3') {
       formationIdForSearch = '';
     } else if (formationFilterEl) {
@@ -4149,59 +4365,83 @@ const AdminPage = (function () {
         : (currentFormationId || adminFormationId || '');
     }
 
-    container.textContent = 'Loading staff records...';
+    var pageSize = STAFF_TABLE_PAGE_SIZE;
+
+    if (!window.staffTableCache || !Array.isArray(window.staffTableCache.data) || window.staffTableCache.data.length === 0) {
+      showStaffTableSpinner();
+      try {
+        var res = await Api.call('getStaffTableLightweight', { key: adminKey });
+        if (!res || !res.success || !res.data) {
+          container.textContent = 'Failed to load staff records.';
+          return;
+        }
+        var records = res.data.records || [];
+        window.staffTableCache = { data: records };
+        if (records.length === 0) {
+          container.textContent = 'No staff records found.';
+          var paginationEl = document.getElementById('hrmStaffPagination');
+          if (paginationEl) paginationEl.innerHTML = '';
+          return;
+        }
+      } catch (err) {
+        container.textContent = err && err.message ? err.message : 'Failed to load staff records.';
+        return;
+      } finally {
+        var spinEl = document.getElementById('staffTableSpinner');
+        if (spinEl) spinEl.style.display = 'none';
+      }
+      return loadStaffList(currentStaffPage);
+    }
+
+    if (query) showSearchSpinner();
+    var filtered = searchStaffRecords(query);
+    if (query) hideSearchSpinner();
+
+    var total = filtered.length;
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    var start = (currentStaffPage - 1) * pageSize;
+    var end = start + pageSize;
+    var pageData = filtered.slice(start, end);
+
+    if (pageData.length === 0) {
+      var paginationEl = document.getElementById('hrmStaffPagination');
+      if (paginationEl) paginationEl.innerHTML = '';
+      container.textContent = query ? 'No matching records.' : 'No staff records found.';
+      return;
+    }
+
+    var pagination = {
+      page: currentStaffPage,
+      limit: pageSize,
+      total: total,
+      totalPages: totalPages,
+      hasPrev: currentStaffPage > 1,
+      hasNext: currentStaffPage < totalPages
+    };
 
     try {
-
-      const res = await Api.call('searchStaff', {
-        key: adminKey,
-        formationId: formationIdForSearch, // Can be empty for HRM_ADMIN/SUPER_ADMIN
-        query: query,
-        page: currentStaffPage,
-        limit: currentStaffLimit,
-        includeArchived: includeArchived
-      });
-
-      if (!res || !res.success || !res.data) {
-        container.textContent = 'No staff records found.';
-        return;
-      }
-
-      const staff = res.data.results || [];
-      const pagination = res.data.pagination || {};
-
-      if (staff.length === 0) {
-        container.textContent = 'No staff records found.';
-        const paginationEl = document.getElementById('hrmStaffPagination');
-        if (paginationEl) paginationEl.innerHTML = '';
-        return;
-      }
-
-      // Load formations and departments to map IDs to names
-      let formationMap = {};
-      let departmentMap = {};
+      var formationMap = {};
+      var departmentMap = {};
       try {
-        // All HRM admins see all formations (nationwide)
         if (adminRole === 'SUPER_ADMIN' || isHrmAdminRole(adminRole)) {
-          const formRes = await Api.call('listFormations', { key: adminKey });
+          var formRes = await Api.call('listFormations', { key: adminKey });
           if (formRes && formRes.success && formRes.data && formRes.data.formations) {
-            formRes.data.formations.forEach(f => {
+            formRes.data.formations.forEach(function (f) {
               formationMap[f.formationId] = f.name || f.formationId;
             });
           }
         }
-        
-        // Load departments for all unique formation IDs in the staff list
-        const uniqueFormationIds = [...new Set(staff.map(s => s.formationId).filter(Boolean))];
-        for (const formId of uniqueFormationIds) {
+        var uniqueFormationIds = [];
+        pageData.forEach(function (s) {
+          if (s.formationId && uniqueFormationIds.indexOf(s.formationId) === -1) uniqueFormationIds.push(s.formationId);
+        });
+        for (var fi = 0; fi < uniqueFormationIds.length; fi++) {
+          var formId = uniqueFormationIds[fi];
           try {
-            const deptRes = await Api.call('listDepartments', {
-              key: adminKey,
-              formationId: formId
-            });
+            var deptRes = await Api.call('listDepartments', { key: adminKey, formationId: formId });
             if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
-              deptRes.data.departments.forEach(d => {
-                const deptId = d.departmentId || d.subUnitId;
+              deptRes.data.departments.forEach(function (d) {
+                var deptId = d.departmentId || d.subUnitId;
                 departmentMap[deptId] = d.name || deptId;
               });
             }
@@ -4213,147 +4453,9 @@ const AdminPage = (function () {
         console.warn('Could not load formations/departments for mapping:', err);
       }
 
-      // Calculate serial number offset based on pagination
-      const serialOffset = (pagination.page - 1) * (pagination.limit || currentStaffLimit) || 0;
-
-      let html = '<table class="data-table"><thead><tr><th>S/N</th><th>File Number</th><th>Name</th><th>Cadre</th><th>Rank</th><th>Grade Level</th><th>Formation</th><th>Department</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
-
-      for (let idx = 0; idx < staff.length; idx++) {
-        const s = staff[idx];
-        const serialNumber = serialOffset + idx + 1;
-        // Format DOB for display - prevent ISO format
-        let dobDisplay = 'N/A';
-        if (s.dob) {
-          try {
-            const dobValue = s.dob;
-            // If it's not an ISO date string, use as is
-            if (typeof dobValue === 'string' && !dobValue.match(/^\d{4}-\d{2}-\d{2}/)) {
-              dobDisplay = dobValue;
-            } else {
-              const dobDate = new Date(dobValue);
-              if (!isNaN(dobDate.getTime())) {
-                dobDisplay = dobDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-              } else {
-                dobDisplay = String(dobValue);
-              }
-            }
-          } catch (e) {
-            dobDisplay = String(s.dob);
-          }
-        }
-
-        // Format Grade Level - ensure it's treated as text, not date
-        // Convert to string and escape any date-like formatting
-        let gradeLevelDisplay = 'N/A';
-        if (s.gradeLevel !== null && s.gradeLevel !== undefined && s.gradeLevel !== '') {
-          const gradeStr = String(s.gradeLevel);
-          // If it looks like a date (ISO format), it's probably a mistake - return as plain text
-          gradeLevelDisplay = gradeStr;
-        }
-
-        // Get formation and department names
-        const formationName = s.formationId ? (formationMap[s.formationId] || 'Not Assigned') : 'Not Assigned';
-        const departmentName = s.subUnitId ? (departmentMap[s.subUnitId] || 'Not Assigned') : 'Not Assigned';
-
-        const staffName = (s.surname || '') + (s.otherNames ? ' ' + s.otherNames : '') || s.name || 'N/A';
-        const sysId = String(s.systemRecordID || '').replace(/"/g, '&quot;');
-        html += `<tr>
-          <td>${serialNumber}</td>
-          <td>${s.fileNumber || 'N/A'}</td>
-          <td><span class="staff-name-link" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" data-system-record-id="${sysId}" title="View full profile" style="cursor: pointer; color: var(--nysc-green, #059669); font-weight: bold;">${staffName}</span></td>
-          <td>${s.cadre || 'N/A'}</td>
-          <td>${s.rank || 'N/A'}</td>
-          <td>${gradeLevelDisplay}</td>
-          <td>${formationName}</td>
-          <td>${departmentName}</td>
-          <td><span class="badge ${s.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${s.status || 'ACTIVE'}</span></td>
-          <td style="white-space: nowrap;">
-            <button class="btn btn-xs btn-primary staff-btn-view" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" data-system-record-id="${sysId}" title="View full profile">View</button>
-            ${(adminRole === 'SUPER_ADMIN' || (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3')) ? `
-            <button class="btn btn-xs btn-secondary staff-btn-edit" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" data-system-record-id="${sysId}" title="Edit staff record">Edit</button>
-            ${s.status !== 'ARCHIVED' ? `<button class="btn btn-xs btn-danger staff-btn-archive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-system-record-id="${sysId}" style="background-color: #dc2626; color: #fff; border-color: #dc2626;" title="Archive/Delete staff record">Archive</button>` : `<button class="btn btn-xs btn-success staff-btn-unarchive" data-employee-id="${String(s.employeeId || '').replace(/"/g, '&quot;')}" data-formation-id="${String(s.formationId || '').replace(/"/g, '&quot;')}" data-system-record-id="${sysId}" title="Restore archived record">Restore</button>`}
-            ` : ''}
-          </td>
-        </tr>`;
-      }
-
-      html += '</tbody></table>';
-      container.innerHTML = html;
-
-      // Event delegation for staff table buttons (avoids onclick escaping issues)
-      if (container._staffTableHandler) {
-        container.removeEventListener('click', container._staffTableHandler);
-      }
-      container._staffTableHandler = function(e) {
-        const nameLink = e.target.closest('.staff-name-link');
-        if (nameLink && nameLink.dataset.employeeId) {
-          AdminPage.showFullStaffProfile(nameLink.dataset.employeeId, nameLink.dataset.formationId || '', nameLink.dataset.systemRecordId || '');
-          return;
-        }
-        const btn = e.target.closest('.staff-btn-view, .staff-btn-edit, .staff-btn-archive, .staff-btn-unarchive');
-        if (!btn || !btn.dataset.employeeId) return;
-        const empId = btn.dataset.employeeId;
-        const formId = btn.dataset.formationId || '';
-        const sysId = btn.dataset.systemRecordId || '';
-        if (btn.classList.contains('staff-btn-view')) {
-          AdminPage.showFullStaffProfile(empId, formId, sysId);
-        } else if (btn.classList.contains('staff-btn-edit')) {
-          AdminPage.editStaff(empId, formId, sysId);
-        } else if (btn.classList.contains('staff-btn-archive')) {
-          AdminPage.archiveStaffConfirm(empId);
-        } else if (btn.classList.contains('staff-btn-unarchive')) {
-          AdminPage.unarchiveStaff(empId, formId);
-        }
-      };
-      container.addEventListener('click', container._staffTableHandler);
-
-      const paginationEl = document.getElementById('hrmStaffPagination');
-      if (paginationEl && pagination.totalPages > 1) {
-        let paginationHtml = '<div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">';
-        if (pagination.hasPrev) {
-          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${pagination.page - 1})">Previous</button>`;
-        }
-        
-        // Page number buttons (show up to 5 pages around current)
-        const totalPages = pagination.totalPages;
-        const currentPage = pagination.page;
-        let startPage = Math.max(1, currentPage - 2);
-        let endPage = Math.min(totalPages, currentPage + 2);
-        
-        if (startPage > 1) {
-          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(1)">1</button>`;
-          if (startPage > 2) {
-            paginationHtml += `<span style="padding: 0 0.5rem;">...</span>`;
-          }
-        }
-        
-        for (let p = startPage; p <= endPage; p++) {
-          if (p === currentPage) {
-            paginationHtml += `<button class="btn btn-sm btn-primary" style="background: var(--nysc-green);" disabled>${p}</button>`;
-          } else {
-            paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${p})">${p}</button>`;
-          }
-        }
-        
-        if (endPage < totalPages) {
-          if (endPage < totalPages - 1) {
-            paginationHtml += `<span style="padding: 0 0.5rem;">...</span>`;
-          }
-          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${totalPages})">${totalPages}</button>`;
-        }
-        
-        paginationHtml += `<span style="margin: 0 0.5rem; color: #666;">Page ${currentPage} of ${totalPages} (${pagination.total} total)</span>`;
-        
-        if (pagination.hasNext) {
-          paginationHtml += `<button class="btn btn-sm btn-secondary" onclick="AdminPage.loadStaffListPage(${pagination.page + 1})">Next</button>`;
-        }
-        paginationHtml += '</div>';
-        paginationEl.innerHTML = paginationHtml;
-      } else if (paginationEl) {
-        paginationEl.innerHTML = '';
-      }
+      renderStaffTable(container, pageData, pagination, formationMap, departmentMap);
     } catch (err) {
-      container.textContent = err.message || 'Failed to load staff records.';
+      container.textContent = err && err.message ? err.message : 'Failed to render staff table.';
     }
   }
 
@@ -4366,6 +4468,10 @@ const AdminPage = (function () {
     if (!window.AdminPage) window.AdminPage = {};
     window.AdminPage.loadStaffList = loadStaffList;
     window.AdminPage.loadStaffListPage = loadStaffListPage;
+    window.AdminPage.searchStaffRecords = searchStaffRecords;
+    window.AdminPage.renderStaffTable = renderStaffTable;
+    window.AdminPage.renderStaffDetail = renderStaffDetail;
+    window.AdminPage.preloadStaffRecord = preloadStaffRecord;
   }
 
   /**
@@ -4664,6 +4770,35 @@ const AdminPage = (function () {
    * Safe profile photo renderer. Only uses drive.google.com/thumbnail (no redirects).
    * All URLs in template literals. onerror fallback so UI never breaks.
    */
+  /**
+   * Preload a staff record in the background and store in window.staffRecordCache. Called on row hover.
+   * Does not render or interrupt the UI.
+   */
+  function preloadStaffRecord(systemRecordID, employeeId, formationId) {
+    var key = (systemRecordID && String(systemRecordID).trim()) ? String(systemRecordID).trim() : (String(employeeId || '') + '_' + String(formationId || ''));
+    if (window.staffRecordCache[key]) return;
+    var body = { key: adminKey, employeeId: employeeId };
+    if (formationId) body.formationId = formationId;
+    if (systemRecordID) body.systemRecordID = systemRecordID;
+    Api.call('getStaffById', body).then(function (res) {
+      if (!res || !res.success || !res.data || !res.data.staff) return;
+      var staff = res.data.staff;
+      var formationName = 'Not Assigned';
+      var departmentName = 'Not Assigned';
+      window.staffRecordCache[key] = { staff: staff, formationName: formationName, departmentName: departmentName };
+    }).catch(function () {});
+  }
+
+  /**
+   * Re-render the staff detail modal from cached record state (no backend). Use when returning from Documents/Photos sub-sections.
+   * Does not reload the staff table.
+   */
+  function renderStaffDetail(record) {
+    if (!record || !record.staff) return;
+    var s = record.staff;
+    showFullStaffProfile(s.employeeId, s.formationId || '', s.systemRecordID || '', record);
+  }
+
   function renderProfilePhoto(imgEl, fileId, sz) {
     if (!imgEl) return;
     const size = sz || 'w300';
@@ -4679,53 +4814,71 @@ const AdminPage = (function () {
     };
   }
 
-  async function showFullStaffProfile(employeeId, formationId, systemRecordID) {
+  async function showFullStaffProfile(employeeId, formationId, systemRecordID, cachedRecord) {
     if (!adminKey) return;
 
-    try {
-      UI.showLoading('Loading', 'Fetching staff profile...');
-      const body = { key: adminKey, employeeId: employeeId };
-      if (formationId) body.formationId = formationId;
-      if (systemRecordID) body.systemRecordID = systemRecordID;
-      const res = await Api.call('getStaffProfile', body);
+    var cacheKey = (systemRecordID && String(systemRecordID).trim()) ? String(systemRecordID).trim() : (String(employeeId || '') + '_' + String(formationId || ''));
+    var staff, formationName, departmentName;
 
-      if (!res || !res.success || !res.data || !res.data.staff) {
+    if (cachedRecord && cachedRecord.staff) {
+      staff = cachedRecord.staff;
+      formationName = cachedRecord.formationName || 'Not Assigned';
+      departmentName = cachedRecord.departmentName || 'Not Assigned';
+      window.currentStaffRecord = cachedRecord;
+    } else if (window.staffRecordCache[cacheKey]) {
+      var cached = window.staffRecordCache[cacheKey];
+      staff = cached.staff;
+      formationName = cached.formationName || 'Not Assigned';
+      departmentName = cached.departmentName || 'Not Assigned';
+      window.currentStaffRecord = cached;
+    } else {
+      try {
+        UI.showLoading('Loading', 'Opening staff record...');
+        var body = { key: adminKey, employeeId: employeeId };
+        if (formationId) body.formationId = formationId;
+        if (systemRecordID) body.systemRecordID = systemRecordID;
+        var res = await Api.call('getStaffById', body);
+
+        if (!res || !res.success || !res.data || !res.data.staff) {
+          UI.closeLoading();
+          await UI.showError('Error', res?.message || 'Staff record not found.');
+          return;
+        }
+
+        staff = res.data.staff;
+        formationName = 'Not Assigned';
+        departmentName = 'Not Assigned';
+        try {
+          if (staff.formationId) {
+            var formRes = await Api.call('listFormations', { key: adminKey });
+            if (formRes && formRes.success && formRes.data && formRes.data.formations) {
+              var formation = formRes.data.formations.find(f => f.formationId === staff.formationId);
+              if (formation) formationName = formation.name || staff.formationId;
+            }
+          }
+          if (staff.subUnitId && staff.formationId) {
+            var deptRes = await Api.call('listDepartments', { key: adminKey, formationId: staff.formationId });
+            if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
+              var dept = deptRes.data.departments.find(d => (d.departmentId || d.subUnitId) === staff.subUnitId);
+              if (dept) departmentName = dept.name || staff.subUnitId;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not load formation/department names:', err);
+        }
+
+        window.staffRecordCache[cacheKey] = { staff: staff, formationName: formationName, departmentName: departmentName };
+        window.currentStaffRecord = window.staffRecordCache[cacheKey];
         UI.closeLoading();
-        await UI.showError('Error', res?.message || 'Staff record not found.');
+      } catch (err) {
+        UI.closeLoading();
+        await UI.showError('Error', err && err.message ? err.message : 'Failed to load staff record.');
         return;
       }
+    }
 
-      const staff = res.data.staff;
-      const documents = res.data.documents || [];
-
-      // Load formation and department names
-      let formationName = 'Not Assigned';
-      let departmentName = 'Not Assigned';
-      try {
-        if (staff.formationId) {
-          const formRes = await Api.call('listFormations', { key: adminKey });
-          if (formRes && formRes.success && formRes.data && formRes.data.formations) {
-            const formation = formRes.data.formations.find(f => f.formationId === staff.formationId);
-            if (formation) {
-              formationName = formation.name || staff.formationId;
-            }
-          }
-        }
-        if (staff.subUnitId && staff.formationId) {
-          const deptRes = await Api.call('listDepartments', {
-            key: adminKey,
-            formationId: staff.formationId
-          });
-          if (deptRes && deptRes.success && deptRes.data && deptRes.data.departments) {
-            const dept = deptRes.data.departments.find(d => (d.departmentId || d.subUnitId) === staff.subUnitId);
-            if (dept) {
-              departmentName = dept.name || staff.subUnitId;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Could not load formation/department names:', err);
-      }
+    try {
+      const documents = []; // Lazy-loaded when Documents section is opened/visible
 
       // Format date helper
       const formatDate = (dateValue) => {
@@ -4898,20 +5051,9 @@ const AdminPage = (function () {
 
             <div style="margin-bottom: 1.5rem;">
               <h3 style="margin-bottom: 0.5rem; color: #059669; border-bottom: 2px solid #059669; padding-bottom: 0.5rem;">Documents</h3>
-              ${documents.length === 0
-                ? '<p class="info info-muted">No documents uploaded.</p>'
-                : `<div id="staffDocGalleryWrap" style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: #f9fafb;">
-                <div style="position: relative; min-height: 280px; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
-                  <img id="staffDocGalleryImg" src="" alt="Document" style="max-width: 100%; max-height: 280px; object-fit: contain; cursor: pointer;" />
-                </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-top: 1px solid #e5e7eb; background: #fff;">
-                  <button type="button" id="staffDocGalleryPrev" class="btn btn-secondary" style="padding: 0.5rem 1rem;">← Previous</button>
-                  <span id="staffDocGalleryCount" style="font-size: 0.9rem; color: #374151; font-weight: 500;">1 / ${documents.length}</span>
-                  <button type="button" id="staffDocGalleryNext" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Next →</button>
-                </div>
-                <div id="staffDocGalleryCaption" style="padding: 0.5rem 1rem; font-size: 0.8rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
-                ${canRemoveReplaceDoc ? '<div id="staffDocGalleryActions" style="padding: 0.5rem 1rem; border-top: 1px solid #e5e7eb; display: flex; gap: 0.5rem;"><button type="button" id="staffDocRemoveBtn" class="btn btn-secondary btn-xs">Remove this document</button><button type="button" id="staffDocReplaceBtn" class="btn btn-secondary btn-xs">Replace with new file</button></div>' : ''}
-              </div>`}
+              <div id="staffDocsLazyWrap" style="min-height: 120px; display: flex; align-items: center; justify-content: center; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;">
+                <p class="info info-muted" id="staffDocsLazyPlaceholder" style="margin: 0;">Loading documents...</p>
+              </div>
             </div>
 
             <div id="fullPhotoSection" style="margin-bottom: 1.5rem; display: none;">
@@ -4970,12 +5112,12 @@ const AdminPage = (function () {
           htmlContainer: 'swal2-html-container-wide'
         },
         didOpen: () => {
-          // Profile photo: safe renderer (thumbnail URL only, onerror fallback)
+          // Profile photo: load when Overview is shown (default tab)
           const profileImg = document.getElementById('fullStaffProfilePhotoImg');
           if (profileImg) {
             renderProfilePhoto(profileImg, staff.profilePhotoFileId || null, 'w300');
           }
-          // Full length photograph (below documents, view in UI)
+          // Full length photograph: lazy-load only when section is visible
           const fullPhotoSection = document.getElementById('fullPhotoSection');
           const fullPhotoThumbImg = document.getElementById('fullPhotoThumbImg');
           const fullPhotoThumbWrap = document.getElementById('fullPhotoThumbWrap');
@@ -4983,130 +5125,146 @@ const AdminPage = (function () {
             fullPhotoSection.style.display = 'block';
             const fullPhotoThumbUrl = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(staff.fullPictureFileId) + '&sz=w400';
             const fullPhotoViewUrl = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(staff.fullPictureFileId) + '&sz=w1200';
-            fullPhotoThumbImg.src = fullPhotoThumbUrl;
-            fullPhotoThumbImg.onerror = function () {
-              fullPhotoThumbImg.style.background = '#e5e7eb';
-              fullPhotoThumbImg.alt = 'Image not available';
-            };
-            if (fullPhotoThumbWrap) {
-              fullPhotoThumbWrap.onclick = () => {
-                const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
-                if (viewImg) viewImg(fullPhotoViewUrl, 'Full Length Photograph');
-                else window.open(fullPhotoViewUrl, '_blank');
+            const loadFullPhoto = () => {
+              fullPhotoThumbImg.src = fullPhotoThumbUrl;
+              fullPhotoThumbImg.onerror = function () {
+                fullPhotoThumbImg.style.background = '#e5e7eb';
+                fullPhotoThumbImg.alt = 'Image not available';
               };
-            }
+              if (fullPhotoThumbWrap) {
+                fullPhotoThumbWrap.onclick = () => {
+                  const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
+                  if (viewImg) viewImg(fullPhotoViewUrl, 'Full Length Photograph');
+                  else window.open(fullPhotoViewUrl, '_blank');
+                };
+              }
+            };
+            const fullPhotoObs = new IntersectionObserver(function (entries) {
+              if (entries[0].isIntersecting) {
+                loadFullPhoto();
+                fullPhotoObs.disconnect();
+              }
+            }, { root: document.getElementById('fullStaffProfileContent'), threshold: 0.1 });
+            fullPhotoObs.observe(fullPhotoSection);
           }
-          // Documents gallery: render thumbnails, prev/next, view full screen in UI
-          const galleryImg = document.getElementById('staffDocGalleryImg');
-          const galleryPrev = document.getElementById('staffDocGalleryPrev');
-          const galleryNext = document.getElementById('staffDocGalleryNext');
-          const galleryCount = document.getElementById('staffDocGalleryCount');
-          const galleryCaption = document.getElementById('staffDocGalleryCaption');
-          if (documents.length > 0 && galleryImg) {
-            let docIndex = 0;
-            const docThumb = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w400';
-            const docView = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w1200';
-            function updateDocGallery() {
-              const d = documents[docIndex];
-              if (!d) return;
-              galleryImg.src = docThumb(d);
-              galleryImg.alt = d.fileName || 'Document';
-              if (galleryCount) galleryCount.textContent = (docIndex + 1) + ' / ' + documents.length;
-              if (galleryCaption) galleryCaption.textContent = d.fileName || 'Document';
-            }
-            updateDocGallery();
-            galleryImg.onerror = function () {
-              this.style.background = '#e5e7eb';
-              this.alt = 'Image not available';
-            };
-            galleryImg.onclick = function () {
-              const d = documents[docIndex];
-              if (!d) return;
-              const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
-              if (viewImg) viewImg(docView(d), d.fileName || 'Document');
-            };
-            if (galleryPrev) {
-              galleryPrev.onclick = () => {
-                docIndex = docIndex <= 0 ? documents.length - 1 : docIndex - 1;
-                updateDocGallery();
-              };
-            }
-            if (galleryNext) {
-              galleryNext.onclick = () => {
-                docIndex = docIndex >= documents.length - 1 ? 0 : docIndex + 1;
-                updateDocGallery();
-              };
-            }
-            const removeDocBtn = document.getElementById('staffDocRemoveBtn');
-            const replaceDocBtn = document.getElementById('staffDocReplaceBtn');
-            if (removeDocBtn && canRemoveReplaceDoc) {
-              removeDocBtn.onclick = async () => {
-                const d = documents[docIndex];
-                if (!d || !d.driveFileId) return;
-                const confirm = await Swal.fire({ title: 'Remove document?', text: 'This will permanently remove this document.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Remove' });
-                if (!confirm.isConfirmed) return;
-                try {
-                  UI.showLoading('Removing', '...');
-                  await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
-                  UI.closeLoading();
-                  await UI.showSuccess('Removed', 'Document removed.');
-                  Swal.close();
-                  await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
-                } catch (err) {
-                  UI.closeLoading();
-                  await UI.showError('Error', err && err.message ? err.message : 'Failed to remove document.');
+          // Documents: lazy-load when staffDocsLazyWrap is visible
+          const staffDocsLazyWrap = document.getElementById('staffDocsLazyWrap');
+          if (staffDocsLazyWrap) {
+            const docsPlaceholder = document.getElementById('staffDocsLazyPlaceholder');
+            let documentsLoaded = false;
+            const loadDocuments = async () => {
+              if (documentsLoaded) return;
+              documentsLoaded = true;
+              if (docsPlaceholder) {
+                docsPlaceholder.innerHTML = '<span style="display:inline-flex;align-items:center;gap:0.5rem;"><span style="width:18px;height:18px;border:2px solid #e5e7eb;border-top-color:#059669;border-radius:50%;animation:staffTableSpin 0.8s linear infinite;"></span> Retrieving documents...</span>';
+              }
+              try {
+                const docRes = await Api.call('listStaffDocuments', {
+                  key: adminKey,
+                  employeeId: employeeId,
+                  formationId: staff.formationId || '',
+                  systemRecordID: staff.systemRecordID || ''
+                });
+                const docs = (docRes && docRes.success && docRes.data && docRes.data.documents) ? docRes.data.documents : [];
+                if (docs.length === 0) {
+                  staffDocsLazyWrap.innerHTML = '<p class="info info-muted" style="margin:0;">No documents uploaded.</p>';
+                  return;
                 }
-              };
-            }
-            if (replaceDocBtn && canRemoveReplaceDoc) {
-              replaceDocBtn.onclick = () => {
-                const d = documents[docIndex];
-                if (!d || !d.driveFileId) return;
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/jpeg,image/jpg,.jpg,.jpeg';
-                input.onchange = async (e) => {
-                  const file = e.target.files && e.target.files[0];
-                  if (!file) return;
-                  if (file.size > 2 * 1024 * 1024) {
-                    await UI.showError('File too large', 'Document must be 2MB or less.');
-                    return;
-                  }
-                  try {
-                    UI.showLoading('Replacing', 'Removing old and uploading new...');
-                    await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
-                    const reader = new FileReader();
-                    reader.onload = async () => {
+                const docThumb = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w400';
+                const docView = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w1200';
+                let docIndex = 0;
+                staffDocsLazyWrap.innerHTML = '<div id="staffDocGalleryWrap" style="border:0;border-radius:8px;overflow:hidden;background:#f9fafb;width:100%;"><div style="position:relative;min-height:280px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;"><img id="staffDocGalleryImg" src="" alt="Document" style="max-width:100%;max-height:280px;object-fit:contain;cursor:pointer;" /></div><div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;border-top:1px solid #e5e7eb;background:#fff;"><button type="button" id="staffDocGalleryPrev" class="btn btn-secondary" style="padding:0.5rem 1rem;">← Previous</button><span id="staffDocGalleryCount" style="font-size:0.9rem;color:#374151;font-weight:500;">1 / ' + docs.length + '</span><button type="button" id="staffDocGalleryNext" class="btn btn-secondary" style="padding:0.5rem 1rem;">Next →</button></div><div id="staffDocGalleryCaption" style="padding:0.5rem 1rem;font-size:0.8rem;color:#6b7280;"></div>' + (canRemoveReplaceDoc ? '<div id="staffDocGalleryActions" style="padding:0.5rem 1rem;border-top:1px solid #e5e7eb;display:flex;gap:0.5rem;"><button type="button" id="staffDocRemoveBtn" class="btn btn-secondary btn-xs">Remove this document</button><button type="button" id="staffDocReplaceBtn" class="btn btn-secondary btn-xs">Replace with new file</button></div>' : '') + '</div>';
+                const galleryImg = document.getElementById('staffDocGalleryImg');
+                const galleryPrev = document.getElementById('staffDocGalleryPrev');
+                const galleryNext = document.getElementById('staffDocGalleryNext');
+                const galleryCount = document.getElementById('staffDocGalleryCount');
+                const galleryCaption = document.getElementById('staffDocGalleryCaption');
+                function updateDocGallery() {
+                  const d = docs[docIndex];
+                  if (!d) return;
+                  galleryImg.src = docThumb(d);
+                  galleryImg.alt = d.fileName || 'Document';
+                  if (galleryCount) galleryCount.textContent = (docIndex + 1) + ' / ' + docs.length;
+                  if (galleryCaption) galleryCaption.textContent = d.fileName || 'Document';
+                }
+                updateDocGallery();
+                galleryImg.onerror = function () { this.style.background = '#e5e7eb'; this.alt = 'Image not available'; };
+                galleryImg.onclick = function () {
+                  const d = docs[docIndex];
+                  if (!d) return;
+                  const viewImg = typeof viewImage === 'function' ? viewImage : (window.AdminPage && window.AdminPage.viewImage);
+                  if (viewImg) viewImg(docView(d), d.fileName || 'Document');
+                };
+                if (galleryPrev) galleryPrev.onclick = () => { docIndex = docIndex <= 0 ? docs.length - 1 : docIndex - 1; updateDocGallery(); };
+                if (galleryNext) galleryNext.onclick = () => { docIndex = docIndex >= docs.length - 1 ? 0 : docIndex + 1; updateDocGallery(); };
+                const removeDocBtn = document.getElementById('staffDocRemoveBtn');
+                const replaceDocBtn = document.getElementById('staffDocReplaceBtn');
+                if (removeDocBtn && canRemoveReplaceDoc) {
+                  removeDocBtn.onclick = async () => {
+                    const d = docs[docIndex];
+                    if (!d || !d.driveFileId) return;
+                    const confirm = await Swal.fire({ title: 'Remove document?', text: 'This will permanently remove this document.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Remove' });
+                    if (!confirm.isConfirmed) return;
+                    try {
+                      UI.showLoading('Removing', '...');
+                      await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
+                      UI.closeLoading();
+                      await UI.showSuccess('Removed', 'Document removed.');
+                      Swal.close();
+                      if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
+                    } catch (err) {
+                      UI.closeLoading();
+                      await UI.showError('Error', err && err.message ? err.message : 'Failed to remove document.');
+                    }
+                  };
+                }
+                if (replaceDocBtn && canRemoveReplaceDoc) {
+                  replaceDocBtn.onclick = () => {
+                    const d = docs[docIndex];
+                    if (!d || !d.driveFileId) return;
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/jpeg,image/jpg,.jpg,.jpeg';
+                    input.onchange = async (e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      if (file.size > 2 * 1024 * 1024) { await UI.showError('File too large', 'Document must be 2MB or less.'); return; }
                       try {
-                        const base64 = reader.result;
-                        await Api.call('uploadDocumentMetadata', {
-                          key: adminKey,
-                          employeeId,
-                          formationId: staff.formationId || '',
-                          subUnitId: staff.subUnitId || '',
-                          fileData: base64,
-                          fileName: file.name || 'document.jpg',
-                          mimeType: file.type || 'image/jpeg',
-                          fileSize: file.size
-                        });
+                        UI.showLoading('Replacing', 'Removing old and uploading new...');
+                        await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            await Api.call('uploadDocumentMetadata', { key: adminKey, employeeId, formationId: staff.formationId || '', subUnitId: staff.subUnitId || '', fileData: reader.result, fileName: file.name || 'document.jpg', mimeType: file.type || 'image/jpeg', fileSize: file.size });
+                            UI.closeLoading();
+                            await UI.showSuccess('Replaced', 'Document replaced successfully.');
+                            Swal.close();
+                            if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
+                          } catch (err2) {
+                            UI.closeLoading();
+                            await UI.showError('Error', err2 && err2.message ? err2.message : 'Upload failed.');
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      } catch (err) {
                         UI.closeLoading();
-                        await UI.showSuccess('Replaced', 'Document replaced successfully.');
-                        Swal.close();
-                        await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
-                      } catch (err2) {
-                        UI.closeLoading();
-                        await UI.showError('Error', err2 && err2.message ? err2.message : 'Upload failed.');
+                        await UI.showError('Error', err && err.message ? err.message : 'Replace failed.');
                       }
                     };
-                    reader.readAsDataURL(file);
-                  } catch (err) {
-                    UI.closeLoading();
-                    await UI.showError('Error', err && err.message ? err.message : 'Replace failed.');
-                  }
-                };
-                input.click();
-              };
-            }
+                    input.click();
+                  };
+                }
+              } catch (err) {
+                staffDocsLazyWrap.innerHTML = '<p class="info info-muted" style="margin:0;">Failed to load documents.</p>';
+              }
+            };
+            const docsObs = new IntersectionObserver(function (entries) {
+              if (entries[0].isIntersecting) {
+                loadDocuments();
+                docsObs.disconnect();
+              }
+            }, { root: document.getElementById('fullStaffProfileContent'), threshold: 0.1 });
+            docsObs.observe(staffDocsLazyWrap);
           }
           // Scroll to top of content
           const contentDiv = document.getElementById('fullStaffProfileContent');
@@ -5146,8 +5304,7 @@ const AdminPage = (function () {
               } else {
                 await archiveStaffConfirm(employeeId);
               }
-              // Reload profile after archive/restore
-              await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
+              if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
             });
           }
 
@@ -5181,8 +5338,7 @@ const AdminPage = (function () {
             uploadDocBtn.addEventListener('click', async () => {
               Swal.close();
               await uploadEmployeeDocument(employeeId, staff.formationId || currentFormationId || '', staff.subUnitId || '');
-              // Reload profile after upload
-              await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
+              if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
             });
           }
 
@@ -5296,7 +5452,7 @@ const AdminPage = (function () {
                   UI.closeLoading();
                   await UI.showSuccess('Done', 'Profile picture updated.');
                   Swal.close();
-                  await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
+                  if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                 } catch (err) {
                   UI.closeLoading();
                   UI.showError('Upload failed', err && err.message ? err.message : 'Could not upload profile picture.');
@@ -5336,7 +5492,7 @@ const AdminPage = (function () {
                     UI.closeLoading();
                     await UI.showSuccess('Done', 'Full length photo updated.');
                     Swal.close();
-                    await showFullStaffProfile(employeeId, staff.formationId || '', staff.systemRecordID || '');
+                    if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                   } catch (err) {
                     UI.closeLoading();
                     UI.showError('Upload failed', err && err.message ? err.message : 'Could not upload full photo.');
@@ -7543,13 +7699,16 @@ const AdminPage = (function () {
           <p class="info info-muted" style="margin-bottom: 1rem;">Viewing all staff records (all formations). You can search and open full profiles.</p>
           ` : ''}
           <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
-            <input 
-              type="text" 
-              id="hrmStaffSearchInput" 
-              class="swal2-input" 
-              placeholder="Search by name, phone number, or file number..." 
-              style="flex: 1; min-width: 200px; margin: 0;"
-            />
+            <div style="display: flex; align-items: center; flex: 1; min-width: 200px; position: relative;">
+              <input 
+                type="text" 
+                id="hrmStaffSearchInput" 
+                class="swal2-input" 
+                placeholder="Search by name, phone number, or file number..." 
+                style="flex: 1; margin: 0; padding-right: 2rem;"
+              />
+              <span id="hrmSearchSpinner" class="hrm-search-spinner" style="display: none; position: absolute; right: 0.5rem; width: 18px; height: 18px; border: 2px solid #e5e7eb; border-top-color: #059669; border-radius: 50%; animation: staffTableSpin 0.8s linear infinite; pointer-events: none;"></span>
+            </div>
             <button class="btn btn-secondary" id="hrmStaffSearchBtn">Search</button>
             <button class="btn btn-secondary" id="hrmStaffClearSearchBtn">Clear</button>
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
