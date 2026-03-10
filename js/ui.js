@@ -437,6 +437,26 @@ const AdminPage = (function () {
     // events.forEach(ev => document.removeEventListener(ev, resetInactivityTimer));
   }
 
+  // Re-enable auto-logout on inactivity (5 minutes)
+  function resetInactivityTimer() {
+    if (!adminKey) return;
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      inactivityTimer = null;
+      handleLogout();
+      window.location.href = 'admin.html';
+    }, ADMIN_INACTIVITY_MS);
+  }
+
+  function setupInactivityTimer() {
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
+    events.forEach(ev => {
+      document.removeEventListener(ev, resetInactivityTimer);
+      document.addEventListener(ev, resetInactivityTimer);
+    });
+    resetInactivityTimer();
+  }
+
   // Helper function to check if a role is any HRM admin role
   function isHrmAdminRole(role) {
     return role === 'HRM_ADMIN' || role === 'HRM_ADMIN_1' || role === 'HRM_ADMIN_2' || role === 'HRM_ADMIN_3' || role === 'HRM_VIEWER';
@@ -712,7 +732,7 @@ const AdminPage = (function () {
 
       adminToken = res.data.adminToken;
       adminKey = key;
-      // setupInactivityTimer(); // TEMPORARILY DISABLED - see resetInactivityTimer/setupInactivityTimer above
+      setupInactivityTimer();
       adminRole = res.data.role;
       adminFormationId = res.data.formationId;
       adminDepartmentId = res.data.departmentId;
@@ -3099,10 +3119,27 @@ const AdminPage = (function () {
 
         // Use placeholder for doc images (Drive fileUrl/thumbnail in img src causes ERR_TOO_MANY_REDIRECTS for private files)
         const docPlaceholderSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='150' viewBox='0 0 180 150'%3E%3Crect fill='%23e5e7eb' width='180' height='150'/%3E%3Ctext x='50%25' y='45%25' fill='%236b7280' font-size='14' text-anchor='middle'%3EDocument%3C/text%3E%3Ctext x='50%25' y='55%25' fill='%239ca3af' font-size='11' text-anchor='middle'%3EClick to open%3C/text%3E%3C/svg%3E";
-        let html = '<div style="text-align: left; max-height: 500px; overflow-y: auto;">';
-        html += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-top: 0.5rem;">';
 
-        for (const doc of documents) {
+        let html = `
+          <div id="employeeDocViewer" style="text-align: left; margin-bottom: 1rem; display: none;">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: flex-start; margin-bottom: 0.5rem;">
+              <button type="button" id="employeeDocPrevBtn" class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" disabled>Previous</button>
+              <button type="button" id="employeeDocNextBtn" class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" disabled>Next</button>
+              <button type="button" id="employeeDocRotateBtn" class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" disabled>Rotate</button>
+              <button type="button" id="employeeDocZoomInBtn" class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" disabled>Zoom In</button>
+              <button type="button" id="employeeDocZoomOutBtn" class="btn btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;" disabled>Zoom Out</button>
+              <a id="employeeDocDownloadLink" href="#" target="_blank" rel="noopener" class="btn btn-primary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: auto; display: none;">Open in new tab</a>
+            </div>
+            <div id="employeeDocViewerContent" style="max-height: 400px; min-height: 200px; border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #f9fafb; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 0.5rem;">
+              <span style="font-size: 0.8rem; color: #6b7280;">Select a document below to preview it here.</span>
+            </div>
+          </div>
+          <div style="text-align: left; max-height: 500px; overflow-y: auto;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-top: 0.5rem;">
+        `;
+
+        for (let index = 0; index < documents.length; index++) {
+          const doc = documents[index];
           const fileSizeKB = doc.fileSize ? (doc.fileSize / 1024).toFixed(2) + 'KB' : 'N/A';
           const uploadDate = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : 'N/A';
           const isImage = doc.mimeType && doc.mimeType.startsWith('image/');
@@ -3111,8 +3148,7 @@ const AdminPage = (function () {
 
           if (isImage) {
             html += `
-              <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; text-align: center; background: #f9fafb; cursor: pointer; transition: transform 0.2s; box-shadow 0.2s;" 
-                   onclick="window.open('${downloadUrl.replace(/'/g, "\\'")}', '_blank')"
+              <div class="employee-doc-card" data-doc-index="${index}" style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem; text-align: center; background: #f9fafb; cursor: pointer; transition: transform 0.2s; box-shadow 0.2s;"
                    onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.1)';"
                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
                 <img src="${docPlaceholderSvg}" alt="${(doc.fileName || 'Document').replace(/"/g, '&quot;')}" style="width: 100%; height: 150px; object-fit: cover; border-radius: 0.25rem; margin-bottom: 0.5rem; cursor: pointer;" />
@@ -3125,7 +3161,7 @@ const AdminPage = (function () {
             `;
           } else {
             html += `
-              <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; background: #f9fafb;">
+              <div class="employee-doc-card" data-doc-index="${index}" style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; background: #f9fafb; cursor: pointer;">
                 <a href="${downloadUrl}" target="_blank" rel="noopener" style="display: block; text-decoration: none; color: #059669;">
                   <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📄</div>
                   <div style="font-size: 0.75rem; color: #374151; word-break: break-word; font-weight: 600;">${fileName.length > 20 ? fileName.substring(0, 20) + '...' : fileName}</div>
@@ -3137,7 +3173,11 @@ const AdminPage = (function () {
             `;
           }
         }
-        html += '</div></div>';
+
+        html += `
+            </div>
+          </div>
+        `;
 
         await Swal.fire({
           title: 'Employee Documents',
@@ -3148,6 +3188,148 @@ const AdminPage = (function () {
           customClass: {
             popup: 'swal2-wide-modal',
             htmlContainer: 'swal2-html-container-wide'
+          },
+          didOpen: () => {
+            const htmlContainer = Swal.getHtmlContainer();
+            if (!htmlContainer) return;
+
+            const viewer = htmlContainer.querySelector('#employeeDocViewer');
+            const viewerContent = htmlContainer.querySelector('#employeeDocViewerContent');
+            const prevBtn = htmlContainer.querySelector('#employeeDocPrevBtn');
+            const nextBtn = htmlContainer.querySelector('#employeeDocNextBtn');
+            const rotateBtn = htmlContainer.querySelector('#employeeDocRotateBtn');
+            const zoomInBtn = htmlContainer.querySelector('#employeeDocZoomInBtn');
+            const zoomOutBtn = htmlContainer.querySelector('#employeeDocZoomOutBtn');
+            const downloadLink = htmlContainer.querySelector('#employeeDocDownloadLink');
+            const cards = htmlContainer.querySelectorAll('.employee-doc-card');
+
+            if (!viewer || !viewerContent || !prevBtn || !nextBtn || !rotateBtn || !zoomInBtn || !zoomOutBtn || !downloadLink) {
+              return;
+            }
+
+            let currentIndex = -1;
+            let currentRotation = 0;
+            let currentZoom = 1;
+
+            const clamp = (val, min, max) => Math.min(max, Math.max(min, val));
+
+            const updateTransform = () => {
+              const img = viewerContent.querySelector('img');
+              if (img) {
+                img.style.transform = 'rotate(' + currentRotation + 'deg) scale(' + currentZoom + ')';
+              }
+            };
+
+            const openDocumentAt = (index) => {
+              if (index < 0 || index >= documents.length) return;
+
+              const doc = documents[index];
+              if (!doc) return;
+
+              const isImage = doc.mimeType && doc.mimeType.startsWith('image/');
+              const downloadUrl = doc.driveFileId ? ('https://drive.google.com/uc?id=' + doc.driveFileId + '&export=download') : (doc.downloadUrl || '#');
+              const fileName = doc.fileName || 'Document';
+
+              viewer.style.display = 'block';
+              viewerContent.innerHTML = '';
+
+              currentIndex = index;
+              currentRotation = 0;
+              currentZoom = 1;
+
+              if (isImage) {
+                const img = document.createElement('img');
+                // We deliberately use the placeholder SVG here for inline preview to avoid Drive redirect issues.
+                img.src = docPlaceholderSvg;
+                img.alt = fileName;
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '380px';
+                img.style.borderRadius = '0.375rem';
+                img.style.transition = 'transform 0.15s ease-out';
+                viewerContent.appendChild(img);
+
+                rotateBtn.disabled = false;
+                zoomInBtn.disabled = false;
+                zoomOutBtn.disabled = false;
+              } else {
+                const wrapper = document.createElement('div');
+                wrapper.style.textAlign = 'center';
+                wrapper.style.fontSize = '0.85rem';
+                wrapper.style.color = '#374151';
+                wrapper.innerHTML =
+                  '<div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📄</div>' +
+                  '<div style="font-weight: 600; margin-bottom: 0.25rem;">' + fileName + '</div>' +
+                  '<div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem;">This document type cannot be previewed here. Use "Open in new tab" to view it.</div>';
+                viewerContent.appendChild(wrapper);
+
+                rotateBtn.disabled = true;
+                zoomInBtn.disabled = true;
+                zoomOutBtn.disabled = true;
+              }
+
+              downloadLink.href = downloadUrl || '#';
+              downloadLink.style.display = downloadUrl && downloadUrl !== '#' ? 'inline-block' : 'none';
+
+              prevBtn.disabled = currentIndex <= 0;
+              nextBtn.disabled = currentIndex >= documents.length - 1;
+
+              updateTransform();
+            };
+
+            cards.forEach(card => {
+              card.addEventListener('click', () => {
+                const idx = parseInt(card.getAttribute('data-doc-index') || '-1', 10);
+                if (!isNaN(idx)) {
+                  openDocumentAt(idx);
+                }
+              });
+            });
+
+            prevBtn.addEventListener('click', () => {
+              if (currentIndex > 0) {
+                openDocumentAt(currentIndex - 1);
+              }
+            });
+
+            nextBtn.addEventListener('click', () => {
+              if (currentIndex < documents.length - 1) {
+                openDocumentAt(currentIndex + 1);
+              }
+            });
+
+            rotateBtn.addEventListener('click', () => {
+              if (currentIndex < 0) return;
+              currentRotation = (currentRotation + 90) % 360;
+              updateTransform();
+            });
+
+            zoomInBtn.addEventListener('click', () => {
+              if (currentIndex < 0) return;
+              currentZoom = clamp(currentZoom + 0.25, 0.5, 4);
+              updateTransform();
+            });
+
+            zoomOutBtn.addEventListener('click', () => {
+              if (currentIndex < 0) return;
+              currentZoom = clamp(currentZoom - 0.25, 0.5, 4);
+              updateTransform();
+            });
+
+            // If there is at least one document, select the first image (or first doc) by default
+            let initialIndex = -1;
+            for (let i = 0; i < documents.length; i++) {
+              const d = documents[i];
+              if (d && d.mimeType && d.mimeType.startsWith('image/')) {
+                initialIndex = i;
+                break;
+              }
+            }
+            if (initialIndex === -1 && documents.length > 0) {
+              initialIndex = 0;
+            }
+            if (initialIndex !== -1) {
+              openDocumentAt(initialIndex);
+            }
           }
         });
         if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
@@ -3292,6 +3474,8 @@ const AdminPage = (function () {
   // Staff record state and cache (keep): current open record; cache by SystemRecordID for instant reopen and preload
   if (typeof window.staffRecordCache === 'undefined') window.staffRecordCache = {};
   if (typeof window.currentStaffRecord === 'undefined') window.currentStaffRecord = null;
+  // Documents cache: keyed by same cacheKey (systemRecordID or employeeId_formationId), survives modal re-open
+  if (typeof window.staffDocCache === 'undefined') window.staffDocCache = {};
 
   /**
    * Load HRM notifications (requests for approval or own request statuses)
@@ -5166,7 +5350,7 @@ const AdminPage = (function () {
             }, { root: document.getElementById('fullStaffProfileContent'), threshold: 0.1 });
             fullPhotoObs.observe(fullPhotoSection);
           }
-          // Documents: lazy-load when staffDocsLazyWrap is visible
+          // Documents: lazy-load when staffDocsLazyWrap is visible; use cache if available to avoid API call
           const staffDocsLazyWrap = document.getElementById('staffDocsLazyWrap');
           if (staffDocsLazyWrap) {
             const docsPlaceholder = document.getElementById('staffDocsLazyPlaceholder');
@@ -5174,6 +5358,12 @@ const AdminPage = (function () {
             const loadDocuments = async () => {
               if (documentsLoaded) return;
               documentsLoaded = true;
+              let docs = window.staffDocCache[cacheKey];
+              if (docs && Array.isArray(docs) && docs.length > 0) {
+                // Use cached documents, skip API call
+                buildDocGallery(docs);
+                return;
+              }
               if (docsPlaceholder) {
                 docsPlaceholder.innerHTML = '<span style="display:inline-flex;align-items:center;gap:0.5rem;"><span style="width:18px;height:18px;border:2px solid #e5e7eb;border-top-color:#059669;border-radius:50%;animation:staffTableSpin 0.8s linear infinite;"></span> Retrieving documents...</span>';
               }
@@ -5184,11 +5374,18 @@ const AdminPage = (function () {
                   formationId: staff.formationId || '',
                   systemRecordID: staff.systemRecordID || ''
                 });
-                const docs = (docRes && docRes.success && docRes.data && docRes.data.documents) ? docRes.data.documents : [];
+                docs = (docRes && docRes.success && docRes.data && docRes.data.documents) ? docRes.data.documents : [];
+                if (docs.length > 0) window.staffDocCache[cacheKey] = docs;
                 if (docs.length === 0) {
                   staffDocsLazyWrap.innerHTML = '<p class="info info-muted" style="margin:0;">No documents uploaded.</p>';
                   return;
                 }
+                buildDocGallery(docs);
+              } catch (err) {
+                staffDocsLazyWrap.innerHTML = '<p class="info info-muted" style="margin:0;">Failed to load documents.</p>';
+              }
+            };
+            function buildDocGallery(docs) {
                 const docThumb = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w400';
                 const docView = (d) => 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId || '') + '&sz=w1200';
                 let docIndex = 0;
@@ -5205,6 +5402,9 @@ const AdminPage = (function () {
                   galleryImg.alt = d.fileName || 'Document';
                   if (galleryCount) galleryCount.textContent = (docIndex + 1) + ' / ' + docs.length;
                   if (galleryCaption) galleryCaption.textContent = d.fileName || 'Document';
+                  // Expose current gallery context so the image viewer can support Next/Previous within the modal
+                  window.currentStaffDocGalleryDocs = docs;
+                  window.currentStaffDocGalleryIndex = docIndex;
                 }
                 updateDocGallery();
                 galleryImg.onerror = function () { this.style.background = '#e5e7eb'; this.alt = 'Image not available'; };
@@ -5229,6 +5429,7 @@ const AdminPage = (function () {
                       await Api.call('deleteStaffDocument', { key: adminKey, employeeId, driveFileId: d.driveFileId, formationId: staff.formationId || '' });
                       UI.closeLoading();
                       await UI.showSuccess('Removed', 'Document removed.');
+                      delete window.staffDocCache[cacheKey];
                       Swal.close();
                       if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                     } catch (err) {
@@ -5257,6 +5458,7 @@ const AdminPage = (function () {
                             await Api.call('uploadDocumentMetadata', { key: adminKey, employeeId, formationId: staff.formationId || '', subUnitId: staff.subUnitId || '', fileData: reader.result, fileName: file.name || 'document.jpg', mimeType: file.type || 'image/jpeg', fileSize: file.size });
                             UI.closeLoading();
                             await UI.showSuccess('Replaced', 'Document replaced successfully.');
+                            delete window.staffDocCache[cacheKey];
                             Swal.close();
                             if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                           } catch (err2) {
@@ -5273,10 +5475,7 @@ const AdminPage = (function () {
                     input.click();
                   };
                 }
-              } catch (err) {
-                staffDocsLazyWrap.innerHTML = '<p class="info info-muted" style="margin:0;">Failed to load documents.</p>';
-              }
-            };
+            }
             const docsObs = new IntersectionObserver(function (entries) {
               if (entries[0].isIntersecting) {
                 loadDocuments();
@@ -9018,11 +9217,26 @@ const AdminPage = (function () {
     const safeName = (imageName || 'Image').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     const fallbackSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300'%3E%3Crect fill='%23f3f4f6' width='400' height='300'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-size='18'%3EImage not available%3C/text%3E%3C/svg%3E";
 
+    let currentImageUrl = imageUrl;
+    let currentImageName = safeName;
+    let currentRotation = 0;
+    // Start zoomed out by default so full document fits in view
+    let currentZoom = 0.65;
+
     Swal.fire({
       title: safeName,
       html: `
         <div style="text-align: center;">
-          <img id="viewImageImg" src="" alt="${safeName}" style="max-width: 100%; max-height: 70vh; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" draggable="false" />
+          <div id="viewImageToolbar" style="margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center;">
+            <button type="button" id="viewImagePrevBtn" class="btn btn-secondary" title="Previous" style="padding: 0.25rem 0.75rem; font-size: 1rem; line-height: 1;">&#9664;</button>
+            <button type="button" id="viewImageNextBtn" class="btn btn-secondary" title="Next" style="padding: 0.25rem 0.75rem; font-size: 1rem; line-height: 1;">&#9654;</button>
+            <button type="button" id="viewImageRotateBtn" class="btn btn-secondary" title="Rotate" style="padding: 0.25rem 0.75rem; font-size: 1rem; line-height: 1;">&#8635;</button>
+            <button type="button" id="viewImageZoomInBtn" class="btn btn-secondary" title="Zoom In" style="padding: 0.25rem 0.75rem; font-size: 1rem; line-height: 1;">&#128269;+</button>
+            <button type="button" id="viewImageZoomOutBtn" class="btn btn-secondary" title="Zoom Out" style="padding: 0.25rem 0.75rem; font-size: 1rem; line-height: 1;">&#128269;-</button>
+          </div>
+          <div style="max-height: 70vh; overflow: auto; display: flex; align-items: center; justify-content: center;">
+            <img id="viewImageImg" src="" alt="${safeName}" style="max-width: 100%; max-height: 100%; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" draggable="false" />
+          </div>
         </div>
       `,
       width: '90%',
@@ -9035,21 +9249,122 @@ const AdminPage = (function () {
       cancelButtonText: 'Close',
       footer: `
         <div style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
-          <a href="${imageUrl.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" style="color: #059669; text-decoration: none; font-weight: 500;">
+          <a id="viewImageFooterLink" href="${imageUrl.replace(/"/g, '&quot;')}" target="_blank" rel="noopener" style="color: #059669; text-decoration: none; font-weight: 500;">
             View Full Size in New Tab →
           </a>
         </div>
       `,
       didOpen: () => {
         const img = document.getElementById('viewImageImg');
+        const footerLink = document.getElementById('viewImageFooterLink');
+        const prevBtn = document.getElementById('viewImagePrevBtn');
+        const nextBtn = document.getElementById('viewImageNextBtn');
+        const rotateBtn = document.getElementById('viewImageRotateBtn');
+        const zoomInBtn = document.getElementById('viewImageZoomInBtn');
+        const zoomOutBtn = document.getElementById('viewImageZoomOutBtn');
+
+        const docs = Array.isArray(window.currentStaffDocGalleryDocs) ? window.currentStaffDocGalleryDocs : null;
+        let index = typeof window.currentStaffDocGalleryIndex === 'number' ? window.currentStaffDocGalleryIndex : -1;
+        const hasGalleryContext = !!docs && docs.length > 0 && index >= 0 && index < docs.length;
+
+        const clamp = (val, min, max) => Math.min(max, Math.max(min, val));
+
+        const applyTransform = () => {
+          if (img) {
+            img.style.transform = 'rotate(' + currentRotation + 'deg) scale(' + currentZoom + ')';
+          }
+        };
+
+        const setImage = (url, name) => {
+          currentImageUrl = url;
+          currentImageName = name || 'Image';
+          currentRotation = 0;
+          // Reset to default zoomed-out level whenever a new image is loaded
+          currentZoom = 0.45;
+          if (img) {
+            img.src = url;
+            img.alt = currentImageName;
+            img.onerror = function () { this.src = fallbackSvg; };
+            applyTransform();
+          }
+          const titleEl = Swal.getTitle();
+          if (titleEl) {
+            titleEl.innerHTML = currentImageName;
+          }
+          if (footerLink) {
+            footerLink.href = url;
+          }
+        };
+
         if (img) {
-          img.src = imageUrl;
-          img.onerror = function () { this.src = fallbackSvg; };
+          setImage(imageUrl, safeName);
         }
+
         const confirmBtn = document.querySelector('.swal2-confirm');
         if (confirmBtn) {
           confirmBtn.addEventListener('click', () => {
-            window.open(imageUrl, '_blank');
+            window.open(currentImageUrl, '_blank');
+          });
+        }
+
+        // If there is no gallery context, disable prev/next but keep rotate/zoom for the single image
+        if (!hasGalleryContext) {
+          if (prevBtn) prevBtn.disabled = true;
+          if (nextBtn) nextBtn.disabled = true;
+        } else {
+          const getDocImageUrl = (d) => {
+            if (!d) return imageUrl;
+            if (d.driveFileId) {
+              return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(d.driveFileId) + '&sz=w1200';
+            }
+            return d.downloadUrl || imageUrl;
+          };
+
+          const updateFromGallery = () => {
+            if (!docs || index < 0 || index >= docs.length) return;
+            const d = docs[index];
+            const url = getDocImageUrl(d);
+            const name = (d.fileName || 'Document').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            setImage(url, name);
+          };
+
+          if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+              if (!docs || docs.length === 0) return;
+              index = index <= 0 ? docs.length - 1 : index - 1;
+              window.currentStaffDocGalleryIndex = index;
+              updateFromGallery();
+            });
+          }
+
+          if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+              if (!docs || docs.length === 0) return;
+              index = index >= docs.length - 1 ? 0 : index + 1;
+              window.currentStaffDocGalleryIndex = index;
+              updateFromGallery();
+            });
+          }
+        }
+
+        if (rotateBtn) {
+          rotateBtn.addEventListener('click', () => {
+            currentRotation = (currentRotation + 90) % 360;
+            applyTransform();
+          });
+        }
+
+        if (zoomInBtn) {
+          zoomInBtn.addEventListener('click', () => {
+            currentZoom = clamp(currentZoom + 0.25, 0.5, 4);
+            applyTransform();
+          });
+        }
+
+        if (zoomOutBtn) {
+          zoomOutBtn.addEventListener('click', () => {
+            currentZoom = clamp(currentZoom - 0.25, 0.5, 4);
+            applyTransform();
           });
         }
       }
