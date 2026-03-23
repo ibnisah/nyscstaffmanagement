@@ -3568,8 +3568,10 @@ const AdminPage = (function () {
         if (res && res.success) {
           await UI.showSuccess('Success', 'Request approved and executed successfully!');
           await loadHrmNotifications();
-          await loadHrmStaffStats();
-          await loadStaffList(currentStaffPage);
+          try { window.staffTableCache = null; } catch (e) {}
+          showTableAreaSpinner('Loading...');
+          void loadHrmStaffStats().catch(function () {});
+          void loadStaffList(currentStaffPage).catch(function () {});
         } else {
           throw new Error(res.message || 'Failed to approve request.');
         }
@@ -3714,6 +3716,7 @@ const AdminPage = (function () {
 
   /**
    * Show Add Staff modal
+   * Admin Create Staff flow only - isolated from field capture, record modal, table preload.
    */
   async function showAddStaffModal() {
     if (!adminKey) {
@@ -3726,7 +3729,10 @@ const AdminPage = (function () {
       return;
     }
 
-    // Load formations and departments for selection
+    // Guard: prevent table refresh from affecting modal while create flow is active
+    window._adminCreateStaffModalOpen = true;
+    try {
+      // Load formations and departments for selection
     let formations = [];
     let departments = [];
 
@@ -3760,6 +3766,9 @@ const AdminPage = (function () {
     let step1Data = {};
     let step1InitialData = {};
 
+    if (typeof console !== 'undefined' && console.log) {
+      console.log('[AdminCreateStaff] Modal opened (Step 1)');
+    }
     // Outer loop: Step 1 can be re-shown when user clicks "Back" on Step 2 (only "Cancel" on Step 1 closes the modal)
     while (true) {
       const step1 = await Swal.fire({
@@ -4102,6 +4111,8 @@ const AdminPage = (function () {
         confirmButtonText: 'Preview',
         cancelButtonText: 'Back',
         confirmButtonColor: '#059669',
+        allowOutsideClick: false,
+        allowEscapeKey: true,
         customClass: {
           popup: 'swal2-wide-modal',
           htmlContainer: 'swal2-html-container-wide'
@@ -4197,13 +4208,18 @@ const AdminPage = (function () {
         confirmButtonText: 'Create Staff Record',
         cancelButtonText: 'Back to Edit',
         confirmButtonColor: '#059669',
+        allowOutsideClick: false,
+        allowEscapeKey: true,
         customClass: { popup: 'swal2-wide-modal', htmlContainer: 'swal2-html-container-wide' }
       });
 
       if (previewResult.isConfirmed) {
         try {
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[AdminCreateStaff] Submit clicked, preparing payload');
+          }
           UI.showLoading('Creating', 'Creating staff record...');
-          const res = await Api.call('createStaff', {
+          const payload = {
             key: adminKey,
             staff: {
               formationId: step1Data.formationId || '',
@@ -4245,7 +4261,14 @@ const AdminPage = (function () {
               presentResidentialAddress: step2Data.presentResidentialAddress || '',
               stateSecretariatAppointmentLetter: step2Data.stateSecretariatAppointmentLetter || ''
             }
-          });
+          };
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[AdminCreateStaff] Payload prepared, sending request');
+          }
+          const res = await Api.call('createStaff', payload, { timeout: 180000 });
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[AdminCreateStaff] Response received', res && res.success ? 'success' : 'failure');
+          }
           if (!res || !res.success) {
             UI.closeLoading();
             throw new Error(res?.message || 'Failed to create staff record.');
@@ -4274,32 +4297,50 @@ const AdminPage = (function () {
 
           await UI.showSuccess('Success', 'Staff record created successfully!');
 
+          // Documents upload is optional. Never block staff creation if document upload is slow/times out.
           if (formationId) {
-            const uploadResult = await Swal.fire({
-              title: 'Upload Documents?',
-              text: 'Would you like to upload documents/images for this staff member now?',
-              icon: 'question',
-              showCancelButton: true,
-              confirmButtonText: 'Yes, Upload Documents',
-              cancelButtonText: 'Skip for Now',
-              confirmButtonColor: '#059669'
-            });
-            if (uploadResult.isConfirmed) {
-              try {
-                const staffRes = await Api.call('getStaffById', { key: adminKey, employeeId });
-                const staffFormationId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.formationId || formationId : formationId;
-                const staffSubUnitId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.subUnitId || '' : '';
-                await uploadEmployeeDocument(employeeId, staffFormationId, staffSubUnitId);
-              } catch (err) {
-                await uploadEmployeeDocument(employeeId, formationId, '');
+            try {
+              const uploadResult = await Swal.fire({
+                title: 'Upload Documents?',
+                text: 'Would you like to upload documents/images for this staff member now?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Upload Documents',
+                cancelButtonText: 'Skip for Now',
+                confirmButtonColor: '#059669'
+              });
+              if (uploadResult.isConfirmed) {
+                try {
+                  const staffRes = await Api.call('getStaffById', { key: adminKey, employeeId });
+                  const staffFormationId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.formationId || formationId : formationId;
+                  const staffSubUnitId = (staffRes?.success && staffRes?.data?.staff) ? staffRes.data.staff.subUnitId || '' : '';
+                  await uploadEmployeeDocument(employeeId, staffFormationId, staffSubUnitId);
+                } catch (err) {
+                  await uploadEmployeeDocument(employeeId, formationId, '');
+                }
               }
+            } catch (docErr) {
+              console.warn('Optional document upload failed:', docErr);
+              await Swal.fire({
+                icon: 'warning',
+                title: 'Staff Created',
+                text: 'Staff record was created successfully, but document upload may not have completed. You can upload documents later from the staff profile.'
+              });
             }
           }
-          await loadHrmStaffStats();
-          await loadStaffList(1);
+
+          // Refresh table/stats in the background (after modal flow ends so it won't interfere)
+          window._adminCreateStaffModalOpen = false;
+          try { window.staffTableCache = null; } catch (e) {}
+          showTableAreaSpinner('Loading...');
+          void loadHrmStaffStats().catch(function () {});
+          void loadStaffList(1).catch(function () {});
           createSuccess = true;
           break;
         } catch (err) {
+          if (typeof console !== 'undefined' && console.error) {
+            console.error('[AdminCreateStaff] Error caught:', err.message || err);
+          }
           UI.closeLoading();
           await UI.showError('Error', err.message || 'Failed to create staff record.');
         }
@@ -4309,6 +4350,9 @@ const AdminPage = (function () {
       }
       if (createSuccess) return;
       step1InitialData = { ...step1Data };
+    }
+  } finally {
+      window._adminCreateStaffModalOpen = false;
     }
   }
 
@@ -4528,6 +4572,9 @@ const AdminPage = (function () {
    * Pagination: pageData = staffTableCache.slice((page-1)*20, page*20). Replace table with next slice on page change.
    */
   async function loadStaffList(page = null) {
+    if (window._adminCreateStaffModalOpen) {
+      return;
+    }
     var container = document.getElementById('hrmStaffTable');
     if (!container) {
       console.warn('loadStaffList: #hrmStaffTable not found in DOM');
@@ -5544,7 +5591,9 @@ const AdminPage = (function () {
                 UI.closeLoading();
                 Swal.close();
                 await UI.showSuccess('Deleted', 'Record and all associated data have been permanently deleted. Invite status is now Pending.');
-                loadStaffList(1);
+                try { window.staffTableCache = null; } catch (e) {}
+                showTableAreaSpinner('Loading...');
+                void loadStaffList(1).catch(function () {});
               } catch (err) {
                 UI.closeLoading();
                 await UI.showError('Error', err && err.message ? err.message : 'Delete failed.');
@@ -5556,6 +5605,8 @@ const AdminPage = (function () {
             uploadDocBtn.addEventListener('click', async () => {
               Swal.close();
               await uploadEmployeeDocument(employeeId, staff.formationId || currentFormationId || '', staff.subUnitId || '');
+              // Clear docs cache so the Documents section reflects latest uploads.
+              try { if (window.staffDocCache) delete window.staffDocCache[cacheKey]; } catch (e) {}
               if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
             });
           }
@@ -5657,7 +5708,7 @@ const AdminPage = (function () {
                   const payload = await resizeAndCompressProfilePhoto(file);
                   if (!payload) return;
                   UI.showLoading('Uploading', 'Uploading profile picture...');
-                  await Api.call('uploadStaffProfilePicture', {
+                      const uploadRes = await Api.call('uploadStaffProfilePicture', {
                     key: adminKey,
                     employeeId,
                     formationId: staff.formationId || currentFormationId || '',
@@ -5670,7 +5721,15 @@ const AdminPage = (function () {
                   UI.closeLoading();
                   await UI.showSuccess('Done', 'Profile picture updated.');
                   Swal.close();
-                  if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
+                      // Update cached record so the photo re-renders with the latest fileId.
+                      const newFileId = uploadRes && uploadRes.success ? uploadRes.data && uploadRes.data.fileId : null;
+                      if (newFileId && window.currentStaffRecord && window.currentStaffRecord.staff) {
+                        window.currentStaffRecord.staff.profilePhotoFileId = newFileId;
+                        if (window.staffRecordCache && window.staffRecordCache[cacheKey] && window.staffRecordCache[cacheKey].staff) {
+                          window.staffRecordCache[cacheKey].staff.profilePhotoFileId = newFileId;
+                        }
+                      }
+                      if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                 } catch (err) {
                   UI.closeLoading();
                   UI.showError('Upload failed', err && err.message ? err.message : 'Could not upload profile picture.');
@@ -5697,7 +5756,7 @@ const AdminPage = (function () {
                 reader.onload = async () => {
                   try {
                     UI.showLoading('Uploading', 'Uploading full length photo...');
-                    await Api.call('uploadStaffFullPicture', {
+                    const uploadRes = await Api.call('uploadStaffFullPicture', {
                       key: adminKey,
                       employeeId,
                       formationId: staff.formationId || currentFormationId || '',
@@ -5710,6 +5769,14 @@ const AdminPage = (function () {
                     UI.closeLoading();
                     await UI.showSuccess('Done', 'Full length photo updated.');
                     Swal.close();
+                    // Update cached record so the full photo re-renders with the latest fileId.
+                    const newFileId = uploadRes && uploadRes.success ? uploadRes.data && uploadRes.data.fileId : null;
+                    if (newFileId && window.currentStaffRecord && window.currentStaffRecord.staff) {
+                      window.currentStaffRecord.staff.fullPictureFileId = newFileId;
+                      if (window.staffRecordCache && window.staffRecordCache[cacheKey] && window.staffRecordCache[cacheKey].staff) {
+                        window.staffRecordCache[cacheKey].staff.fullPictureFileId = newFileId;
+                      }
+                    }
                     if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
                   } catch (err) {
                     UI.closeLoading();
@@ -6551,8 +6618,11 @@ const AdminPage = (function () {
                       }
                       UI.closeLoading();
                       await UI.showSuccess('Success', 'Staff record updated successfully!');
-                      await loadHrmStaffStats();
-                      await loadStaffList(currentStaffPage);
+                      // Table refresh must not block UI (and also fetch latest rows).
+                      try { window.staffTableCache = null; } catch (e) {}
+                      showTableAreaSpinner('Loading...');
+                      void loadHrmStaffStats().catch(function () {});
+                      void loadStaffList(currentStaffPage).catch(function () {});
                     } else if (updateRes && updateRes.code === 'HRM_EDIT_REQUIRES_APPROVAL') {
                       // HRM_ADMIN_3 flow: cannot edit directly, must request approval (handled by backend)
                       UI.closeLoading();
@@ -6673,8 +6743,10 @@ const AdminPage = (function () {
 
       if (res && res.success) {
         await UI.showSuccess('Success', 'Staff record archived successfully!');
-        await loadHrmStaffStats();
-        await loadStaffList(currentStaffPage);
+        try { window.staffTableCache = null; } catch (e) {}
+        showTableAreaSpinner('Loading...');
+        void loadHrmStaffStats().catch(function () {});
+        void loadStaffList(currentStaffPage).catch(function () {});
       } else if (res && res.code === 'HRM_ARCHIVE_REQUIRES_APPROVAL') {
         // HRM_ADMIN_2 flow: cannot archive directly, must request approval (handled by backend)
         await Swal.fire({
@@ -6734,8 +6806,10 @@ const AdminPage = (function () {
 
       if (res && res.success) {
         await UI.showSuccess('Success', 'Staff record restored successfully!');
-        await loadHrmStaffStats();
-        await loadStaffList(currentStaffPage);
+        try { window.staffTableCache = null; } catch (e) {}
+        showTableAreaSpinner('Loading...');
+        void loadHrmStaffStats().catch(function () {});
+        void loadStaffList(currentStaffPage).catch(function () {});
       } else {
         throw new Error(res.message || 'Failed to restore staff record.');
       }
