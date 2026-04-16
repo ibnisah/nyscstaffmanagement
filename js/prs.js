@@ -755,10 +755,14 @@
               ${rows.length === 0
                 ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
                 : rows.map(l => {
+                    // Admin-friendly labels only. We intentionally do NOT fall
+                    // back to the raw internal IDs (EVT_…, CAMP_…) — if a
+                    // camp/event was deleted we show a neutral placeholder
+                    // instead so operators never see the long system name.
                     const campLabel = l.campName
                       ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
-                      : (l.campId || '');
-                    const eventLabel = l.eventName || l.eventId || '';
+                      : '— (camp removed)';
+                    const eventLabel = l.eventName || '— (event removed)';
                     return `
                       <tr>
                         <td>${esc(fmtDate(l.timestamp))}</td>
