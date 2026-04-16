@@ -104,18 +104,19 @@
         </div>
       </div>
 
-      <div class="prs-action-row">
-        <button type="button" class="btn btn-primary" id="signInBtn">🟢 Sign In</button>
-        <button type="button" class="btn btn-danger" id="signOutBtn">🔴 Sign Out</button>
+      <!-- Sign-In and Sign-Out are revealed in stages:
+           1. Sign-In button is shown first (morning window).
+           2. Once signed in for the day, Sign-In hides and Sign-Out is
+              revealed (evening window from 4pm).
+           A small notice explains why an action is currently unavailable. -->
+      <div class="prs-action-row" id="actionRow">
+        <button type="button" class="btn btn-primary btn-block" id="signInBtn" style="display:none;grid-column:1 / -1;">🟢 Sign In</button>
+        <button type="button" class="btn btn-danger btn-block"  id="signOutBtn" style="display:none;grid-column:1 / -1;">🔴 Sign Out</button>
       </div>
-      <p class="info info-muted" style="margin-top: 0.75rem; font-size: 0.85rem;">
+      <p class="info info-muted" id="actionNotice" style="margin-top: 0.75rem; font-size: 0.85rem;">
         Your GPS must be within the camp radius. Location is captured on tap.
       </p>
       <div id="dashStatus" class="status" style="margin-top: 1rem;"></div>
-
-      <button type="button" class="btn btn-secondary btn-block" id="backToPhoneBtn" style="margin-top: 0.75rem;">
-        Switch phone number
-      </button>
     </section>
 
   </main>
@@ -226,9 +227,50 @@
             ? (la.action.replace('_', ' ') + ' · ' + new Date(la.timestamp).toLocaleString())
             : '—';
 
-          // Disable buttons per state.
-          document.getElementById('signInBtn').disabled  = !!d.todaySignedIn;
-          document.getElementById('signOutBtn').disabled = !d.todaySignedIn || !!d.todaySignedOut;
+          // ---- Staged + time-windowed action visibility ----
+          // Rules (driven by backend timeWindow payload):
+          //   * Sign-In:  shown only when not yet signed in AND inside the
+          //               morning window (before signInLatestHour).
+          //   * Sign-Out: shown only AFTER sign-in is recorded, AND inside
+          //               the evening window (>= signOutEarliestHour), AND
+          //               not yet signed out today.
+          //   * If neither button is currently usable, display a clear
+          //     notice explaining when the next action becomes available.
+          const tw = d.timeWindow || {};
+          const signInBtnEl  = document.getElementById('signInBtn');
+          const signOutBtnEl = document.getElementById('signOutBtn');
+          const noticeEl     = document.getElementById('actionNotice');
+
+          signInBtnEl.style.display  = 'none';
+          signOutBtnEl.style.display = 'none';
+          signInBtnEl.disabled  = false;
+          signOutBtnEl.disabled = false;
+          let notice = '';
+
+          if (!d.todaySignedIn) {
+            // Stage 1 — must sign in first.
+            if (tw.inSignInWindow) {
+              signInBtnEl.style.display = 'block';
+              notice = 'Sign in to start your day. Sign-out will appear from ' +
+                       (tw.signOutEarliestLabel || '4:00 PM') + '.';
+            } else {
+              notice = 'Sign-in window has closed for today (allowed before ' +
+                       (tw.signInLatestLabel || '12:00 PM') + ').';
+            }
+          } else if (!d.todaySignedOut) {
+            // Stage 2 — signed in, awaiting sign-out.
+            if (tw.inSignOutWindow) {
+              signOutBtnEl.style.display = 'block';
+              notice = 'You are signed in. Tap Sign Out when you are done for the day.';
+            } else {
+              notice = 'You are signed in. Sign-out becomes available from ' +
+                       (tw.signOutEarliestLabel || '4:00 PM') + '.';
+            }
+          } else {
+            // Stage 3 — both done for today.
+            notice = 'You have completed today\'s attendance. See you tomorrow.';
+          }
+          noticeEl.textContent = notice;
 
           setStatus('phoneStatus', '');
           showStep('stepDashboard');
@@ -289,11 +331,6 @@
 
       document.getElementById('signInBtn').addEventListener('click',  () => performAttendance('SIGN_IN'));
       document.getElementById('signOutBtn').addEventListener('click', () => performAttendance('SIGN_OUT'));
-      document.getElementById('backToPhoneBtn').addEventListener('click', () => {
-        document.getElementById('phoneInput').value = '';
-        currentPhone = '';
-        showStep('stepPhone');
-      });
 
       document.getElementById('navbarToggle')?.addEventListener('click', function () {
         const navbar = document.querySelector('.navbar-links');
