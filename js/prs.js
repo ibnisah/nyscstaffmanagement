@@ -28,6 +28,21 @@
     return Api.call(action, payload || {}, opts || { skipCache: true });
   }
 
+  // Auto-derive the full frontend base URL (origin + directory path), e.g.
+  //   https://my-site.netlify.app            → https://my-site.netlify.app
+  //   https://my-site.netlify.app/admin.html → https://my-site.netlify.app
+  //   https://my-site.netlify.app/nysc/      → https://my-site.netlify.app/nysc
+  // This is passed to prsGetCampQr so the QR URL is always a full, scannable
+  // URL with protocol + host, even when no Script Property is set on the
+  // Apps Script project.
+  function currentFrontendBaseUrl() {
+    try {
+      const origin = window.location.origin || '';
+      const dir = (window.location.pathname || '').replace(/\/[^/]*$/, '');
+      return (origin + dir).replace(/\/+$/, '');
+    } catch (e) { return ''; }
+  }
+
   const PrsApi = {
     // ---- Events ----
     createEvent: (key, body) => call('prsCreateEvent', Object.assign({ key }, body)),
@@ -42,7 +57,11 @@
     deleteCamp:          (key, campId) => call('prsDeleteCamp', { key, campId }),
     listCamps:           (key, eventId) => call('prsListCamps', { key, eventId: eventId || '' }),
     regenerateCampToken: (key, campId) => call('prsRegenerateCampToken', { key, campId }),
-    getCampQr:           (key, campId) => call('prsGetCampQr', { key, campId }),
+    getCampQr:           (key, campId) => call('prsGetCampQr', {
+      key,
+      campId,
+      baseUrl: currentFrontendBaseUrl(),
+    }),
 
     // ---- Assignments ----
     assignStaff:      (key, body) => call('prsAssignStaff', Object.assign({ key }, body)),
