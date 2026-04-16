@@ -1179,46 +1179,38 @@ const AdminPage = (function () {
         return;
       }
 
-      // For SUPER_ADMIN, get all modules (they can access everything)
-      // For others, get modules available for their role and formation
+      // Always ask the backend which modules this role can see — the backend
+      // is the single source of truth (module-registry.gs). This also means
+      // newly-added modules (e.g. PRS) appear automatically without needing
+      // a frontend change.
       let modules = [];
 
-      if (adminRole === 'SUPER_ADMIN') {
-        // SUPER_ADMIN can see all modules
-        modules = [
-          { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
-          { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
-          { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
-          { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
-        ];
-      } else {
-        // For other roles, call the backend to get available modules
-        try {
-          UI.showLoading('Loading', 'Fetching available modules...');
-          const res = await Api.call('getAvailableModules', {
-            key: adminKey,
-            formationId: formationId
-          });
-          UI.closeLoading();
+      try {
+        UI.showLoading('Loading', 'Fetching available modules...');
+        // SUPER_ADMIN may have no formationId; backend still requires one,
+        // so pass any non-empty placeholder — the backend's SUPER_ADMIN
+        // short-circuit returns all registered modules regardless of it.
+        const effectiveFormationId = formationId || 'SUPER_ADMIN';
+        const res = await Api.call('getAvailableModules', {
+          key: adminKey,
+          formationId: effectiveFormationId
+        }, { skipCache: true });
+        UI.closeLoading();
 
-          if (res && res.data && res.data.modules) {
-            modules = res.data.modules;
-          } else {
-            console.warn('No modules returned from getAvailableModules');
-            // Fallback: show basic modules based on role
-            if (isHrmAdminRole(adminRole)) {
-              modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
-            } else {
-              modules = [
-                { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
-                { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }
-              ];
-            }
-          }
-        } catch (apiError) {
-          console.error('Error fetching available modules:', apiError);
+        if (res && res.data && res.data.modules) {
+          modules = res.data.modules;
+        } else {
+          console.warn('No modules returned from getAvailableModules');
           // Fallback: show basic modules based on role
-          if (isHrmAdminRole(adminRole)) {
+          if (adminRole === 'SUPER_ADMIN') {
+            modules = [
+              { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
+              { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
+              { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
+              { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' },
+              { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
+            ];
+          } else if (isHrmAdminRole(adminRole)) {
             modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
           } else {
             modules = [
@@ -1227,6 +1219,25 @@ const AdminPage = (function () {
             ];
           }
         }
+      } catch (apiError) {
+        console.error('Error fetching available modules:', apiError);
+        // Fallback: show basic modules based on role
+        if (adminRole === 'SUPER_ADMIN') {
+          modules = [
+            { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
+            { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
+            { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
+            { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' },
+            { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
+          ];
+        } else if (isHrmAdminRole(adminRole)) {
+          modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
+        } else {
+          modules = [
+            { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
+            { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }
+          ];
+        }
       }
 
       // Map module IDs to frontend module names
@@ -1234,6 +1245,7 @@ const AdminPage = (function () {
         'ATTENDANCE': 'attendance',
         'VISITORS': 'visitors',
         'HRM': 'hrm',
+        'PRS': 'prs',
         'SYSTEM_ADMIN': 'system'
       };
 
@@ -7602,7 +7614,30 @@ const AdminPage = (function () {
       loadVisitorsActions();
     } else if (module === 'hrm') {
       loadHrmActions();
+    } else if (module === 'prs') {
+      loadPrsActions();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRS (Camp Monitoring) — delegates UI rendering to window.PrsAdmin
+  // (defined in frontend/js/prs.js). This keeps the PRS module isolated and
+  // keeps ui.js from ballooning further.
+  // ---------------------------------------------------------------------------
+  function loadPrsActions() {
+    const container = document.getElementById('prsActions');
+    if (!container) return;
+    if (typeof window.PrsAdmin === 'undefined') {
+      container.innerHTML =
+        '<div class="info info-error">PRS module not loaded. Check that js/prs.js is included before js/ui.js.</div>';
+      return;
+    }
+    // Push current admin context (key + role) into the PRS helper so its
+    // render functions can hit the API.
+    window.PrsAdmin.setContext({ adminKey: adminKey, adminRole: adminRole });
+    window.PrsAdmin.renderActions(container, function (view) {
+      loadModuleView('prs', view);
+    });
   }
 
   function loadAttendanceActions() {
@@ -7798,6 +7833,13 @@ const AdminPage = (function () {
         await loadVisitorsView(view, content);
       } else if (module === 'hrm') {
         await loadHrmView(view, content);
+      } else if (module === 'prs') {
+        if (typeof window.PrsAdmin !== 'undefined') {
+          window.PrsAdmin.setContext({ adminKey: adminKey, adminRole: adminRole });
+          await window.PrsAdmin.renderView(view, content);
+        } else {
+          content.innerHTML = '<div class="info info-error">PRS module (js/prs.js) failed to load.</div>';
+        }
       } else if (module === 'system') {
         await loadSystemView(view, content);
       }

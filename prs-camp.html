@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Camp Sign In / Sign Out — NYSC PRS</title>
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    .prs-step { display: none; }
+    .prs-step.active { display: block; }
+    .prs-mini-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
+    .prs-stat { background: var(--background-light, #f5f5f5); padding: 1rem; border-radius: 8px; text-align: center; }
+    .prs-stat-value { font-size: 1.5rem; font-weight: 700; color: var(--nysc-green, #059669); }
+    .prs-stat-label { font-size: 0.8rem; color: var(--text-muted, #666); margin-top: 0.25rem; }
+    .prs-meta-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+    .prs-meta-row:last-child { border-bottom: none; }
+    .prs-meta-label { color: var(--text-muted, #666); font-size: 0.9rem; }
+    .prs-meta-value { font-weight: 600; }
+    .prs-action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem; }
+    .prs-action-row .btn { padding: 1rem; font-size: 1rem; }
+    .status-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .status-badge.ok { background: #dcfce7; color: #166534; }
+    .status-badge.pending { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-container">
+      <div class="navbar-brand">
+        <div class="logo-container">
+          <img src="nysclogo.png" alt="NYSC Logo" class="nysc-logo" />
+          <div class="brand-text-container">
+            <span class="brand-logo">NYSC</span>
+            <span class="brand-text">PRS Camp Monitoring</span>
+          </div>
+        </div>
+      </div>
+      <button class="navbar-toggle" id="navbarToggle" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <main class="page page-visitor">
+
+    <!-- STEP 0: Loading / invalid QR -->
+    <section class="card prs-step active" id="stepLoading">
+      <h1>Validating QR Code…</h1>
+      <p class="subtitle">Please wait while we verify this camp's QR code.</p>
+      <div id="loadingStatus" class="status"></div>
+    </section>
+
+    <!-- STEP 1: Phone prompt -->
+    <section class="card prs-step" id="stepPhone">
+      <h1 id="campHeaderName">Camp</h1>
+      <p class="subtitle" id="campHeaderMeta"></p>
+
+      <form id="phoneForm" autocomplete="off">
+        <label class="field">
+          <span>Enter your registered phone number</span>
+          <input type="tel" id="phoneInput" inputmode="numeric"
+                 placeholder="e.g. 08012345678" required />
+        </label>
+        <button type="submit" class="btn btn-primary btn-block">Continue</button>
+      </form>
+      <div id="phoneStatus" class="status" style="margin-top: 1rem;"></div>
+    </section>
+
+    <!-- STEP 2: Mini dashboard + actions -->
+    <section class="card prs-step" id="stepDashboard">
+      <h1 id="dashStaffName">Staff</h1>
+      <p class="subtitle" id="dashCampLine"></p>
+
+      <div class="prs-mini-dashboard">
+        <div class="prs-stat"><div class="prs-stat-value" id="statRequired">-</div><div class="prs-stat-label">Required Days</div></div>
+        <div class="prs-stat"><div class="prs-stat-value" id="statCompleted">-</div><div class="prs-stat-label">Completed Days</div></div>
+        <div class="prs-stat"><div class="prs-stat-value" id="statRemaining">-</div><div class="prs-stat-label">Remaining</div></div>
+      </div>
+
+      <div style="border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+        <h3 style="margin-top: 0;">Today</h3>
+        <div class="prs-meta-row">
+          <span class="prs-meta-label">Sign-In</span>
+          <span class="prs-meta-value" id="todaySignInBadge"><span class="status-badge pending">Not yet</span></span>
+        </div>
+        <div class="prs-meta-row">
+          <span class="prs-meta-label">Sign-Out</span>
+          <span class="prs-meta-value" id="todaySignOutBadge"><span class="status-badge pending">Not yet</span></span>
+        </div>
+        <div class="prs-meta-row">
+          <span class="prs-meta-label">Last action</span>
+          <span class="prs-meta-value" id="lastActionValue">—</span>
+        </div>
+      </div>
+
+      <div class="prs-action-row">
+        <button type="button" class="btn btn-primary" id="signInBtn">🟢 Sign In</button>
+        <button type="button" class="btn btn-danger" id="signOutBtn">🔴 Sign Out</button>
+      </div>
+      <p class="info info-muted" style="margin-top: 0.75rem; font-size: 0.85rem;">
+        Your GPS must be within the camp radius. Location is captured on tap.
+      </p>
+      <div id="dashStatus" class="status" style="margin-top: 1rem;"></div>
+
+      <button type="button" class="btn btn-secondary btn-block" id="backToPhoneBtn" style="margin-top: 0.75rem;">
+        Switch phone number
+      </button>
+    </section>
+
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/prs.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // ---- Utility ----
+      function qs(name) {
+        const p = new URLSearchParams(location.search);
+        return p.get(name) || '';
+      }
+      function showStep(id) {
+        document.querySelectorAll('.prs-step').forEach(s => s.classList.remove('active'));
+        const el = document.getElementById(id);
+        if (el) el.classList.add('active');
+      }
+      function setStatus(id, msg, type) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.className = 'status' + (type ? ' status-' + type : '');
+        el.textContent = msg || '';
+      }
+      function getGps(options) {
+        return new Promise((resolve, reject) => {
+          if (!navigator.geolocation) return reject(new Error('Geolocation not supported by this browser.'));
+          navigator.geolocation.getCurrentPosition(
+            pos => resolve(pos),
+            ereg => reject(new Error('Could not get your location: ' + (ereg.message || ereg.code))),
+            Object.assign({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }, options || {})
+          );
+        });
+      }
+
+      // ---- State from QR URL ----
+      const eventId = qs('eventId');
+      const campId  = qs('campId');
+      const token   = qs('token');
+
+      if (!eventId || !campId || !token) {
+        showStep('stepLoading');
+        setStatus('loadingStatus', 'This QR code is incomplete or malformed. Please scan the camp QR again.', 'error');
+        return;
+      }
+
+      // Kept between steps
+      let campInfo = null;    // { campId, campName, state, latitude, longitude, radiusMeters }
+      let eventInfo = null;   // { eventId, eventName, status, startDate, endDate }
+      let assignment = null;  // { assignmentId, staffName, department, requiredDays, ... }
+      let currentPhone = '';  // normalized input phone
+
+      // ---- Step 1: validate QR ----
+      async function validate() {
+        try {
+          setStatus('loadingStatus', 'Validating QR code…');
+          const res = await Prs.Staff.validateQr({ eventId, campId, token });
+          campInfo = (res && res.data && res.data.camp) || null;
+          eventInfo = (res && res.data && res.data.event) || null;
+          if (!campInfo || !eventInfo) throw new Error('Invalid response from server.');
+
+          document.getElementById('campHeaderName').textContent = campInfo.campName || 'Camp';
+          document.getElementById('campHeaderMeta').textContent =
+            (campInfo.state ? campInfo.state + ' • ' : '') +
+            (eventInfo.eventName || '') +
+            ' • Radius: ' + (campInfo.radiusMeters || 500) + 'm';
+
+          showStep('stepPhone');
+        } catch (e) {
+          setStatus('loadingStatus',
+            (e && e.message) || 'Could not validate QR code.',
+            'error');
+        }
+      }
+
+      // ---- Step 2: phone resolution + mini dashboard ----
+      async function resolvePhoneAndShowDashboard(phone) {
+        try {
+          setStatus('phoneStatus', 'Looking up your assignment…');
+          const res = await Prs.Staff.getStaffDashboard({ eventId, campId, token, phone });
+          const d = (res && res.data) || {};
+          assignment = d.assignment;
+          const completed = Number(d.daysCompleted || 0);
+          const required = Number(assignment.requiredDays || 0);
+          const remaining = Math.max(0, required - completed);
+
+          document.getElementById('dashStaffName').textContent = assignment.staffName || 'Staff';
+          document.getElementById('dashCampLine').textContent =
+            (campInfo.campName || 'Camp') + ' (' + (campInfo.state || '') + ')' +
+            (assignment.department ? ' • ' + assignment.department : '');
+          document.getElementById('statRequired').textContent = required;
+          document.getElementById('statCompleted').textContent = completed;
+          document.getElementById('statRemaining').textContent = remaining;
+
+          document.getElementById('todaySignInBadge').innerHTML =
+            d.todaySignedIn
+              ? '<span class="status-badge ok">Signed in</span>'
+              : '<span class="status-badge pending">Not yet</span>';
+          document.getElementById('todaySignOutBadge').innerHTML =
+            d.todaySignedOut
+              ? '<span class="status-badge ok">Signed out</span>'
+              : '<span class="status-badge pending">Not yet</span>';
+
+          const la = d.lastAction;
+          document.getElementById('lastActionValue').textContent = la
+            ? (la.action.replace('_', ' ') + ' · ' + new Date(la.timestamp).toLocaleString())
+            : '—';
+
+          // Disable buttons per state.
+          document.getElementById('signInBtn').disabled  = !!d.todaySignedIn;
+          document.getElementById('signOutBtn').disabled = !d.todaySignedIn || !!d.todaySignedOut;
+
+          setStatus('phoneStatus', '');
+          showStep('stepDashboard');
+        } catch (e) {
+          setStatus('phoneStatus', (e && e.message) || 'Could not match your assignment.', 'error');
+        }
+      }
+
+      // ---- Actions (sign in / out) ----
+      async function performAttendance(kind) {
+        const btnId = kind === 'SIGN_IN' ? 'signInBtn' : 'signOutBtn';
+        const btn = document.getElementById(btnId);
+        const originalText = btn.textContent;
+
+        try {
+          btn.disabled = true;
+          btn.textContent = 'Getting location…';
+          setStatus('dashStatus', 'Fetching GPS…');
+          const pos = await getGps();
+          btn.textContent = 'Submitting…';
+          setStatus('dashStatus', 'Submitting…');
+
+          const payload = {
+            eventId, campId, token,
+            phone: currentPhone,
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || null,
+          };
+
+          const action = kind === 'SIGN_IN' ? Prs.Staff.signIn : Prs.Staff.signOut;
+          const res = await action(payload);
+
+          Swal.fire({
+            icon: 'success',
+            title: kind === 'SIGN_IN' ? 'Signed in!' : 'Signed out!',
+            text: (res && res.message) || 'Attendance recorded.',
+            timer: 2500, showConfirmButton: false,
+          });
+          setStatus('dashStatus', '');
+          // Refresh dashboard to reflect new state
+          await resolvePhoneAndShowDashboard(currentPhone);
+        } catch (e) {
+          setStatus('dashStatus', (e && e.message) || 'Failed to record attendance.', 'error');
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }
+
+      // ---- Wire up form / buttons ----
+      document.getElementById('phoneForm').addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        const phone = document.getElementById('phoneInput').value.trim();
+        if (!phone) return;
+        currentPhone = phone;
+        resolvePhoneAndShowDashboard(phone);
+      });
+
+      document.getElementById('signInBtn').addEventListener('click',  () => performAttendance('SIGN_IN'));
+      document.getElementById('signOutBtn').addEventListener('click', () => performAttendance('SIGN_OUT'));
+      document.getElementById('backToPhoneBtn').addEventListener('click', () => {
+        document.getElementById('phoneInput').value = '';
+        currentPhone = '';
+        showStep('stepPhone');
+      });
+
+      document.getElementById('navbarToggle')?.addEventListener('click', function () {
+        const navbar = document.querySelector('.navbar-links');
+        if (navbar) navbar.classList.toggle('active');
+      });
+
+      validate();
+    })();
+  </script>
+</body>
+</html>

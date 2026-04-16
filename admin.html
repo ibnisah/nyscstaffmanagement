@@ -551,6 +551,13 @@
                         Manage staff information, leaves, and documents
                     </div>
                 </div>
+                <div class="module-card" data-module="prs" id="prsModuleCard" style="display: none;">
+                    <div class="module-icon">🏕️</div>
+                    <div class="module-title">PRS Camp Monitoring</div>
+                    <div class="module-description">
+                        Manage camp events, QR codes, staff assignments, and attendance.
+                    </div>
+                </div>
                 <div class="module-card" data-module="system" id="systemModuleCard" style="display: none;">
                     <div class="module-icon">⚙️</div>
                     <div class="module-title">System Settings</div>
@@ -627,6 +634,21 @@
                     <div id="hrmContent" class="card-grid"></div>
                 </div>
 
+                <!-- PRS (Camp Monitoring) Workspace -->
+                <div id="prsWorkspace" class="workspace-content">
+                    <div class="workspace-header">
+                        <div class="workspace-header-top">
+                            <button class="back-to-modules-btn back-to-modules-header">
+                                ← Back to Modules
+                            </button>
+                        </div>
+                        <h1 class="workspace-title">PRS Camp Monitoring</h1>
+                        <p class="workspace-subtitle">Camp events, QR codes, staff assignments, and attendance.</p>
+                    </div>
+                    <div class="contextual-actions" id="prsActions"></div>
+                    <div id="prsContent" class="card-grid"></div>
+                </div>
+
                 <!-- System Admin Workspace -->
                 <div id="systemWorkspace" class="workspace-content">
                     <div class="workspace-header">
@@ -647,6 +669,9 @@
     <!-- Load scripts -->
     <script src="js/api.js"></script>
     <script src="js/nigeria-data.js"></script>
+    <!-- PRS (Planning, Research & Statistics) UI helpers — loaded BEFORE ui.js
+         so ui.js can delegate to window.PrsAdmin. -->
+    <script src="js/prs.js"></script>
     <script src="js/ui.js"></script>
     <script>
         // Verify all modules loaded
