@@ -586,26 +586,33 @@
       try {
         const r = await PrsApi.listAssignments(ctx.adminKey, evSel.value, campSel.value);
         const rows = (r && r.data && r.data.assignments) || [];
+
+        // Prefer names joined server-side (a.eventName / a.campName). Fall back
+        // to the local camps dataset only if the backend didn't send a name.
         const camps = JSON.parse(campSel.dataset.camps || '[]');
-        const campName = id => {
-          const c = camps.find(x => String(x.campId) === String(id));
-          return c ? `${c.campName} (${c.state})` : id;
+        const campLabel = a => {
+          if (a.campName) {
+            return a.campState ? `${a.campName} (${a.campState})` : a.campName;
+          }
+          const c = camps.find(x => String(x.campId) === String(a.campId));
+          return c ? `${c.campName} (${c.state})` : '';
         };
 
         tableWrap.innerHTML = `
           <table class="data-table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Department</th><th>Camp</th><th>Required Days</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Department</th><th>Event</th><th>Camp</th><th>Required Days</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No assignments yet.</td></tr>'
+                ? '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No assignments yet.</td></tr>'
                 : rows.map(a => `
                   <tr data-asg-id="${esc(a.assignmentId)}">
                     <td>${esc(a.staffName)}</td>
                     <td>${esc(a.phone)}</td>
                     <td>${esc(a.department)}</td>
-                    <td>${esc(campName(a.campId))}</td>
+                    <td>${esc(a.eventName || '')}</td>
+                    <td>${esc(campLabel(a))}</td>
                     <td>${esc(a.requiredDays)}</td>
                     <td><span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span></td>
                     <td>
@@ -742,21 +749,28 @@
         wrap.innerHTML = `
           <table class="data-table">
             <thead>
-              <tr><th>When</th><th>Action</th><th>Phone</th><th>Camp</th><th>Event</th><th>Distance (m)</th></tr>
+              <tr><th>When</th><th>Action</th><th>Staff</th><th>Phone</th><th>Camp</th><th>Event</th><th>Distance (m)</th></tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
-                : rows.map(l => `
-                  <tr>
-                    <td>${esc(fmtDate(l.timestamp))}</td>
-                    <td><span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span></td>
-                    <td>${esc(l.phone)}</td>
-                    <td>${esc(l.campId)}</td>
-                    <td>${esc(l.eventId)}</td>
-                    <td>${l.distanceMeters != null ? Math.round(Number(l.distanceMeters)) : ''}</td>
-                  </tr>
-                `).join('')}
+                ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
+                : rows.map(l => {
+                    const campLabel = l.campName
+                      ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
+                      : (l.campId || '');
+                    const eventLabel = l.eventName || l.eventId || '';
+                    return `
+                      <tr>
+                        <td>${esc(fmtDate(l.timestamp))}</td>
+                        <td><span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span></td>
+                        <td>${esc(l.staffName || '')}</td>
+                        <td>${esc(l.phone)}</td>
+                        <td>${esc(campLabel)}</td>
+                        <td>${esc(eventLabel)}</td>
+                        <td>${l.distanceMeters != null ? Math.round(Number(l.distanceMeters)) : ''}</td>
+                      </tr>
+                    `;
+                  }).join('')}
             </tbody>
           </table>
         `;
