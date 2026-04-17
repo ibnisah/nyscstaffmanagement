@@ -18,385 +18,767 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
-        /* Module Selector Styles */
-        .module-selector {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.5rem;
-            padding: 2rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        /* =========================================================
+           ADMIN — eCoursie-style 3-column dashboard (NYSC green)
+           ========================================================= */
 
-        .module-card {
+        /* —— Module picker: horizontal “course” cards + circular CTA —— */
+        #moduleSelector {
             background: var(--white);
-            border: 2px solid var(--border-color);
-            border-radius: 8px;
-            padding: 2rem;
-            text-align: center;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-soft);
+            padding: clamp(1rem, 2vw, 1.75rem);
+            margin: 0 auto;
+            max-width: 1100px;
+        }
+        .module-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 0;
+            margin: 0;
+            max-width: none;
+        }
+        .module-card {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 1.1rem;
+            min-height: 108px;
+            padding: 1.15rem 1.25rem 1.15rem 1.35rem;
+            background: linear-gradient(105deg, #f0fdf4 0%, #f7fdfb 55%, #ffffff 100%);
+            border: 1px solid rgba(5, 150, 105, 0.18);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow);
             cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            text-align: left;
+            transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+            position: relative;
+            overflow: hidden;
         }
-
+        .module-card:nth-child(5n+2) {
+            background: linear-gradient(105deg, #f0fdf4 0%, #f9fffe 55%, #ffffff 100%);
+        }
+        .module-card:nth-child(5n+3) {
+            background: linear-gradient(105deg, #ecfdf5 0%, #f5fdfb 55%, #ffffff 100%);
+        }
+        .module-card:nth-child(5n+4) {
+            background: linear-gradient(105deg, #f7fde8 0%, #fafdf5 55%, #ffffff 100%);
+        }
+        .module-card:nth-child(5n+5) {
+            background: linear-gradient(105deg, #f0fdfa 0%, #f7fefe 55%, #ffffff 100%);
+        }
+        .module-card::after {
+            content: '';
+            position: absolute;
+            inset: auto -20% -40% auto;
+            width: 180px;
+            height: 180px;
+            background: radial-gradient(closest-side, rgba(5, 150, 105, 0.08), transparent);
+            pointer-events: none;
+        }
         .module-card:hover {
-            border-color: var(--nysc-green);
-            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
             transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            border-color: rgba(5, 150, 105, 0.28);
         }
-
         .module-card.active {
             border-color: var(--nysc-green);
-            background: linear-gradient(135deg, rgba(5, 150, 105, 0.05) 0%, rgba(5, 150, 105, 0.1) 100%);
+            box-shadow: var(--shadow-md), 0 0 0 2px rgba(5, 150, 105, 0.2);
+            background: linear-gradient(105deg, var(--nysc-green-mist) 0%, #ffffff 70%);
         }
-
         .module-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-
-        .module-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--text-dark);
-            margin-bottom: 0.5rem;
-        }
-
-        .module-description {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-
-        /* Layout Styles */
-        .admin-layout {
-            display: flex;
-            min-height: calc(100vh - 80px);
-            width: 100%;
+            width: 58px;
+            height: 58px;
+            min-width: 58px;
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.65rem;
             margin: 0;
-            padding: 0;
-        }
-
-        /* Sidebar - Only for System Admin */
-        .admin-sidebar {
-            width: 280px;
-            min-width: 280px;
-            background: var(--white);
-            border-right: 1px solid var(--border-color);
-            padding: 1.5rem;
+            background: linear-gradient(145deg, #ffffff 0%, var(--nysc-green-mist) 100%);
+            box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.18), var(--shadow-xs);
             position: relative;
-            height: auto;
+            z-index: 1;
+        }
+        .module-card-body {
+            flex: 1;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .module-title {
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.12rem;
+            font-weight: 700;
+            color: var(--ink);
+            margin: 0 0 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .module-description {
+            color: var(--text-body);
+            font-size: 0.88rem;
+            line-height: 1.45;
+            margin: 0;
+        }
+        .module-card-cta {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.35rem;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--white);
+            background: linear-gradient(145deg, #047857 0%, #059669 50%, #10b981 100%);
+            box-shadow: var(--shadow-glow);
+            pointer-events: none;
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (min-width: 720px) {
+            .module-selector {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+        }
+
+        /* —— Logged-in shell: sidebar + main panel + right rail —— */
+        .admin-layout {
+            display: block;
+            width: 100%;
+            max-width: 1520px;
+            margin: 0 auto;
+            padding: 0;
+            min-height: calc(100vh - 80px);
+        }
+
+        .admin-dashboard-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 252px) minmax(0, 1fr);
+            gap: 1.25rem;
+            align-items: start;
+        }
+
+        @media (min-width: 1200px) {
+            .admin-dashboard-grid {
+                grid-template-columns: minmax(0, 260px) minmax(0, 1fr) minmax(0, 272px);
+            }
+        }
+
+        /* Deep green sidebar — airy layout, readable on all breakpoints */
+        #sidebarContent {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .admin-sidebar {
+            width: auto;
+            min-width: 0;
+            background: linear-gradient(175deg, #012a14 0%, #034a24 50%, #047857 100%);
+            color: rgba(255, 255, 255, 0.95);
+            border: none;
+            border-radius: var(--radius-xl);
+            padding: 1.25rem 1rem 1.5rem;
+            box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+            position: sticky;
+            top: 86px;
+            max-height: calc(100vh - 100px);
+            overflow-x: hidden;
             overflow-y: auto;
-            box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+            -webkit-overflow-scrolling: touch;
+            scrollbar-gutter: stable;
         }
-
-        .admin-sidebar.hidden {
-            display: none;
+        .admin-sidebar::-webkit-scrollbar {
+            width: 8px;
         }
-
-        /* Hide sidebar for non-system modules */
+        .admin-sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.22);
+            border-radius: 8px;
+        }
+        .admin-sidebar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+        }
+        .admin-sidebar.hidden,
         .admin-sidebar.module-hidden {
             display: none;
         }
 
-        .sidebar-section {
-            margin-bottom: 2rem;
+        .admin-sidebar .sidebar-section {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 0.25rem;
         }
-
-        .sidebar-section-title {
-            font-size: 0.75rem;
-            font-weight: 600;
+        .admin-sidebar .sidebar-section-title {
+            color: rgba(255, 255, 255, 0.5);
+            padding: 0.75rem 0.75rem 0.35rem;
+            margin: 0;
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.13em;
             text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
-            letter-spacing: 0.5px;
+            line-height: 1.3;
+            display: block;
         }
 
-        .sidebar-link {
+        .admin-sidebar .sidebar-link {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            color: var(--text-dark);
+            gap: 0.7rem;
+            color: rgba(255, 255, 255, 0.88);
             text-decoration: none;
-            border-radius: 6px;
-            transition: all 0.2s ease;
-            margin-bottom: 0.25rem;
-            cursor: pointer;
+            border-radius: 12px;
+            padding: 0.62rem 0.85rem;
+            margin-bottom: 0.2rem;
+            line-height: 1.35;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+            min-height: 2.6rem;
         }
-
-        .sidebar-link:hover {
-            background: var(--background-light);
+        .admin-sidebar .sidebar-link:hover {
+            background: rgba(255, 255, 255, 0.10);
+            color: var(--white);
+            text-decoration: none;
+        }
+        .admin-sidebar .sidebar-link.active {
+            background: rgba(255, 255, 255, 0.95);
+            color: #012a14;
+            font-weight: 700;
+            box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.28);
+        }
+        .admin-sidebar .sidebar-link-icon {
+            flex-shrink: 0;
+            width: 1.4rem;
+            text-align: center;
+            font-size: 1rem;
+            line-height: 1;
+            color: rgba(255, 255, 255, 0.75);
+        }
+        .admin-sidebar .sidebar-link.active .sidebar-link-icon {
             color: var(--nysc-green);
         }
 
-        .sidebar-link.active {
-            background: var(--nysc-green);
+        .admin-sidebar .back-to-modules {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: var(--white);
+            margin-bottom: 1rem;
+            width: 100%;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        .admin-sidebar .back-to-modules:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.35);
             color: var(--white);
         }
 
-        .sidebar-link-icon {
-            font-size: 1.25rem;
-            width: 24px;
-            text-align: center;
+        /* Centre: floating white “canvas” */
+        .admin-main-column {
+            min-width: 0;
+        }
+        .admin-main-panel {
+            background: linear-gradient(180deg, #ffffff 0%, #f9fdfb 100%);
+            border-radius: var(--radius-xl);
+            border: 1px solid rgba(5, 150, 105, 0.22);
+            box-shadow: var(--shadow-pop);
+            padding: clamp(1rem, 2vw, 1.65rem) clamp(1rem, 2vw, 1.75rem) 1.75rem;
+            min-height: calc(100vh - 120px);
         }
 
-        /* Workspace Styles */
         .admin-workspace {
-            flex: 1;
-            padding: 1.5rem 2rem;
-            overflow-y: auto;
-            min-height: calc(100vh - 80px);
-            max-width: 1400px;
-            margin: 0 auto;
             width: 100%;
+            padding: 0;
+            margin: 0;
         }
-
-        /* Full width workspace when sidebar is hidden */
         .admin-workspace.full-width {
-            width: 100%;
             max-width: 100%;
         }
 
-        /* Contextual Action Buttons */
+        /* Right utility rail (decorative overview — matches reference rhythm) */
+        .admin-utility-rail {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+            position: sticky;
+            top: 86px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+        @media (min-width: 1200px) {
+            .admin-utility-rail { display: flex; }
+        }
+
+        .admin-rail-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-soft);
+            box-shadow: var(--shadow-sm);
+            padding: 1.15rem 1.2rem;
+        }
+        .admin-rail-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+        }
+        .admin-rail-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            color: var(--white);
+            background: linear-gradient(145deg, var(--nysc-green) 0%, var(--nysc-green-light) 100%);
+            box-shadow: var(--shadow-glow);
+            flex-shrink: 0;
+        }
+        .admin-rail-name {
+            display: block;
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: var(--ink);
+        }
+        .admin-rail-meta {
+            display: block;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .admin-rail-profile > div:last-child {
+            display: flex;
+            flex-direction: column;
+            gap: 0.12rem;
+            min-width: 0;
+        }
+
+        .admin-rail-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.65rem;
+        }
+        .admin-rail-month {
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            font-size: 0.88rem;
+            color: var(--ink);
+        }
+        .admin-rail-nav {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1px solid var(--border-soft);
+            background: var(--surface-2);
+            color: var(--text-muted);
+            cursor: default;
+            font-size: 1rem;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .admin-rail-cal-weekdays,
+        .admin-rail-cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.2rem;
+            text-align: center;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--text-faint);
+        }
+        .admin-rail-cal-grid {
+            margin-top: 0.35rem;
+            font-size: 0.75rem;
+            color: var(--text-body);
+        }
+        .admin-rail-day {
+            padding: 0.35rem 0;
+            border-radius: var(--radius-pill);
+        }
+        .admin-rail-day.is-muted { color: var(--border-strong); opacity: 0.45; }
+        .admin-rail-day.is-today {
+            background: var(--nysc-green);
+            color: var(--white);
+            font-weight: 700;
+        }
+
+        .admin-rail-heading {
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--ink);
+            margin: 0 0 0.75rem;
+            letter-spacing: -0.01em;
+        }
+        .admin-rail-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .admin-rail-list li {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.55rem 0;
+            border-bottom: 1px solid var(--border-soft);
+        }
+        .admin-rail-list li:last-child { border-bottom: none; }
+        .admin-rail-list-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--nysc-green-mist);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .admin-rail-list-text { flex: 1; min-width: 0; }
+        .admin-rail-list-name {
+            font-weight: 700;
+            font-size: 0.82rem;
+            color: var(--ink);
+        }
+        .admin-rail-list-sub {
+            display: block;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .admin-rail-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--nysc-green-light);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+            flex-shrink: 0;
+        }
+
+        /* Filter / quick-actions strip (reference “Filter by” row) */
         .contextual-actions {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.75rem;
-            margin-bottom: 2rem;
-            padding: 1rem;
-            background: var(--background-light);
-            border-radius: 8px;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.35rem;
+            padding: 0.65rem 0.75rem 0.65rem 0.85rem;
+            background: #f1f4f2;
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-xs);
+        }
+        .contextual-actions::before {
+            content: 'Quick views';
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-right: 0.35rem;
+            padding-right: 0.5rem;
+            border-right: 1px solid var(--border-soft);
         }
 
         .action-btn {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.25rem;
+            gap: 0.45rem;
+            padding: 0.5rem 1rem;
             background: var(--white);
-            color: var(--text-dark);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.95rem;
-            transition: all 0.2s ease;
+            color: var(--text-body);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-pill);
+            font-size: 0.84rem;
+            font-weight: 600;
+            box-shadow: var(--shadow-xs);
             cursor: pointer;
+            transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
         }
-
         .action-btn:hover {
-            background: var(--nysc-green);
-            color: var(--white);
-            border-color: var(--nysc-green);
+            background: var(--nysc-green-mist);
+            color: var(--nysc-green-darker);
+            border-color: rgba(5, 150, 105, 0.25);
         }
-
         .action-btn.active {
-            background: var(--nysc-green);
+            background: linear-gradient(135deg, var(--nysc-green) 0%, var(--nysc-green-light) 100%);
             color: var(--white);
-            border-color: var(--nysc-green);
+            border-color: transparent;
+            box-shadow: var(--shadow-glow);
         }
+        .action-btn-icon { font-size: 1rem; }
 
-        .action-btn-icon {
-            font-size: 1.1rem;
-        }
-
+        /* Workspace header: title row + decorative tools (reference) */
         .workspace-header {
-            margin-bottom: 2rem;
-            padding-bottom: 1rem;
-            border-bottom: 2px solid var(--border-color);
+            margin-bottom: 1.35rem;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
         }
-
+        .workspace-header::before { content: none !important; }
         .workspace-header-top {
+            margin-bottom: 0.65rem;
+        }
+        .workspace-header-main {
             display: flex;
-            justify-content: flex-start;
-            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1.15rem 1.35rem;
+            background: var(--white);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-sm);
         }
-
+        .workspace-header-text { flex: 1; min-width: 0; }
         .workspace-title {
-            font-size: 2rem;
-            font-weight: bold;
-            color: var(--text-dark);
-            margin-bottom: 0.5rem;
+            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+            font-size: clamp(1.25rem, 0.8vw + 1rem, 1.65rem);
+            font-weight: 800;
+            color: var(--ink);
+            margin: 0 0 0.25rem;
+            letter-spacing: -0.025em;
         }
-
         .workspace-subtitle {
             color: var(--text-muted);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            margin: 0;
+            line-height: 1.45;
+        }
+        .workspace-header-tools {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+        .header-tool-pill {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f4f2;
+            border: 1px solid var(--border-soft);
+            box-shadow: var(--shadow-xs);
+            font-size: 1.05rem;
+            line-height: 1;
+            position: relative;
+        }
+        .header-tool-pill svg {
+            display: block;
+            color: var(--text-muted);
+        }
+        .header-tool-pill--alert .header-tool-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 4px;
+            border-radius: var(--radius-pill);
+            background: #ef4444;
+            color: var(--white);
+            font-size: 0.62rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
         }
 
         .back-to-modules-btn {
             display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: var(--background-light);
-            color: var(--text-dark);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            font-size: 0.95rem;
+            gap: 0.45rem;
+            padding: 0.45rem 0.95rem;
+            background: #f1f4f2;
+            color: var(--text-body);
+            border: 1px solid var(--border-soft);
+            border-radius: var(--radius-pill);
+            font-size: 0.82rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: background-color var(--t-fast), color var(--t-fast);
         }
-
         .back-to-modules-btn:hover {
-            background: var(--nysc-green);
-            color: var(--white);
-            border-color: var(--nysc-green);
+            background: var(--nysc-green-mist);
+            color: var(--nysc-green-darker);
         }
 
         .logout-btn {
-            background: rgba(255, 255, 255, 0.1) !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            background: rgba(255, 255, 255, 0.14) !important;
+            border: 1px solid rgba(255, 255, 255, 0.28) !important;
+            color: var(--white) !important;
+            border-radius: var(--radius-pill) !important;
+            padding: 0.5rem 1rem !important;
+            font-size: 0.88rem !important;
+            cursor: pointer;
+            font-weight: 600;
         }
-
         .logout-btn:hover {
-            background: rgba(255, 255, 255, 0.2) !important;
+            background: rgba(255, 255, 255, 0.24) !important;
         }
 
-        /* Admin role badge - displays logged-in admin type, white like other navbar items */
         .admin-role-badge {
             display: inline-flex;
             align-items: center;
-            padding: 0.35rem 0.75rem;
-            margin-right: 0.5rem;
-            color: var(--white, #fff);
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-
-        .workspace-content {
-            display: none;
-        }
-
-        .workspace-content.active {
-            display: block;
-        }
-
-        /* Back to Modules Button */
-        .back-to-modules {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: var(--background-light);
-            color: var(--text-dark);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            margin-bottom: 1rem;
-            transition: all 0.2s ease;
-        }
-
-        .back-to-modules:hover {
-            background: var(--nysc-green);
+            gap: 0.35rem;
+            padding: 0.35rem 0.85rem;
+            margin-right: 0.25rem;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: var(--radius-pill);
             color: var(--white);
-            border-color: var(--nysc-green);
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
-        /* Mobile Sidebar Toggle */
+        .workspace-content { display: none; }
+        .workspace-content.active { display: block; }
+
         .sidebar-toggle {
             display: none;
             position: fixed;
             left: 1rem;
-            top: 90px;
+            top: 86px;
             z-index: 101;
-            background: var(--nysc-green);
+            background: linear-gradient(135deg, var(--nysc-green) 0%, var(--nysc-green-light) 100%);
             color: var(--white);
             border: none;
-            border-radius: 6px;
-            padding: 0.5rem 1rem;
+            border-radius: var(--radius-pill);
+            padding: 0.6rem 1.1rem;
             cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            box-shadow: var(--shadow-glow);
+            font-weight: 600;
+            font-size: 0.88rem;
         }
 
         .sidebar-overlay {
             display: none;
             position: fixed;
-            top: 80px;
+            top: 74px;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(4px);
             z-index: 99;
         }
+        .sidebar-overlay.active { display: block; }
 
-        .sidebar-overlay.active {
-            display: block;
+        /* Sidebar omitted for some modules: widen main; keep rail on XL screens */
+        .admin-dashboard-grid:has(.admin-sidebar.module-hidden) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+        @media (min-width: 1200px) {
+            .admin-dashboard-grid:has(.admin-sidebar.module-hidden) {
+                grid-template-columns: minmax(0, 1fr) minmax(0, 272px);
+            }
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .admin-layout {
-                flex-direction: column;
+        /* Tablet: sidebar + main (no right rail) */
+        @media (max-width: 1199px) and (min-width: 769px) {
+            .admin-dashboard-grid {
+                grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+                gap: 1rem;
             }
-
             .admin-sidebar {
-                width: 100%;
-                position: fixed;
-                left: -100%;
-                top: 80px;
-                height: calc(100vh - 80px);
-                transition: left 0.3s ease;
-                z-index: 100;
+                padding: 1.2rem 1rem 1.5rem;
+                max-height: calc(100vh - 88px);
             }
-
-            .admin-sidebar.mobile-open {
-                left: 0;
+            .admin-sidebar .sidebar-link {
+                padding: 0.58rem 0.8rem;
+                font-size: 0.88rem;
             }
-
-            .admin-workspace {
-                width: 100%;
-                padding: 1rem;
+            .admin-utility-rail {
+                display: none !important;
             }
+            .admin-main-panel {
+                min-height: auto;
+            }
+        }
 
-            .sidebar-toggle {
+        @media (max-width: 768px) {
+            .admin-dashboard-grid {
                 display: block;
             }
-
-            .module-selector {
-                grid-template-columns: 1fr;
+            .admin-sidebar {
+                position: fixed;
+                left: -110%;
+                top: 74px;
+                width: min(calc(100vw - 1.25rem), 340px);
+                max-width: 340px;
+                min-width: 260px;
+                height: calc(100vh - 74px);
+                max-height: calc(100vh - 74px);
+                border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+                transition: left var(--t-base) var(--ease);
+                z-index: 100;
+                box-shadow: var(--shadow-xl);
+                padding: 1.25rem 1rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+            }
+            #sidebarContent {
+                gap: 1rem;
+            }
+            .admin-sidebar .sidebar-link {
+                font-size: 0.9rem;
+                padding: 0.7rem 0.85rem;
+                margin-bottom: 0.3rem;
+            }
+            .admin-sidebar.mobile-open { left: 0; }
+            .admin-main-panel {
+                border-radius: var(--radius-lg);
                 padding: 1rem;
             }
-
-            .workspace-header {
-                margin-bottom: 1rem;
-                padding-bottom: 0.75rem;
+            .sidebar-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
             }
-
-            .workspace-title {
-                font-size: 1.5rem;
+            .module-card {
+                flex-wrap: wrap;
+                min-height: 0;
+            }
+            .module-card-cta {
+                margin-left: auto;
+            }
+            .workspace-header-main { padding: 1rem; }
+            .contextual-actions::before {
+                flex-basis: 100%;
+                border-right: none;
+                padding-bottom: 0.35rem;
+                margin-bottom: 0.15rem;
+                border-bottom: 1px dashed var(--border-soft);
             }
         }
 
         @media (max-width: 480px) {
-            .admin-workspace {
-                padding: 0.75rem;
-            }
-
-            .workspace-title {
-                font-size: 1.25rem;
-            }
-
-            .module-selector {
-                padding: 0.5rem;
-                gap: 1rem;
-            }
-
-            .module-card {
-                padding: 1.5rem;
-            }
+            .workspace-title { font-size: 1.15rem; }
+            .module-icon { width: 50px; height: 50px; min-width: 50px; }
+            .module-card-cta { width: 42px; height: 42px; min-width: 42px; font-size: 1.2rem; }
         }
 
-        /* Remove margin-top from page in admin */
-        .page.page-admin {
-            margin-top: 0 !important;
-        }
-
-        /* Remove margin-top from footer */
-        .footer {
-            margin-top: 0 !important;
-        }
+        .page.page-admin { margin-top: 0 !important; }
+        .footer { margin-top: 3rem !important; }
 
         /* Wide modal styles for Add Staff - no horizontal overflow */
         .swal2-wide-modal {
@@ -532,38 +914,53 @@
             <div class="module-selector">
                 <div class="module-card" data-module="attendance">
                     <div class="module-icon">📊</div>
-                    <div class="module-title">Attendance</div>
-                    <div class="module-description">
-                        Track staff attendance and manage devices
+                    <div class="module-card-body">
+                        <div class="module-title">Attendance</div>
+                        <div class="module-description">
+                            Track staff attendance and manage devices
+                        </div>
                     </div>
+                    <span class="module-card-cta" aria-hidden="true">&#8250;</span>
                 </div>
                 <div class="module-card" data-module="visitors">
                     <div class="module-icon">👥</div>
-                    <div class="module-title">Visitors</div>
-                    <div class="module-description">
-                        Handle visitor sign-ins and approvals
+                    <div class="module-card-body">
+                        <div class="module-title">Visitors</div>
+                        <div class="module-description">
+                            Handle visitor sign-ins and approvals
+                        </div>
                     </div>
+                    <span class="module-card-cta" aria-hidden="true">&#8250;</span>
                 </div>
                 <div class="module-card" data-module="hrm">
                     <div class="module-icon">👔</div>
-                    <div class="module-title">Staff Records</div>
-                    <div class="module-description">
-                        Manage staff information, leaves, and documents
+                    <div class="module-card-body">
+                        <div class="module-title">Staff Records</div>
+                        <div class="module-description">
+                            Manage staff information, leaves, and documents
+                        </div>
                     </div>
+                    <span class="module-card-cta" aria-hidden="true">&#8250;</span>
                 </div>
                 <div class="module-card" data-module="prs" id="prsModuleCard" style="display: none;">
                     <div class="module-icon">🏕️</div>
-                    <div class="module-title">PRS Camp Monitoring</div>
-                    <div class="module-description">
-                        Manage camp events, QR codes, staff assignments, and attendance.
+                    <div class="module-card-body">
+                        <div class="module-title">PRS Camp Monitoring</div>
+                        <div class="module-description">
+                            Manage camp events, QR codes, staff assignments, and attendance.
+                        </div>
                     </div>
+                    <span class="module-card-cta" aria-hidden="true">&#8250;</span>
                 </div>
                 <div class="module-card" data-module="system" id="systemModuleCard" style="display: none;">
                     <div class="module-icon">⚙️</div>
-                    <div class="module-title">System Settings</div>
-                    <div class="module-description">
-                        Manage formations, admins, and system configuration
+                    <div class="module-card-body">
+                        <div class="module-title">System Settings</div>
+                        <div class="module-description">
+                            Manage formations, admins, and system configuration
+                        </div>
                     </div>
+                    <span class="module-card-cta" aria-hidden="true">&#8250;</span>
                 </div>
             </div>
         </section>
@@ -578,7 +975,8 @@
             <!-- Sidebar Overlay (Mobile Only) -->
             <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-            <!-- Sidebar -->
+            <div class="admin-dashboard-grid">
+
             <aside class="admin-sidebar" id="adminSidebar">
                 <a href="#" class="back-to-modules" id="backToModulesBtn">
                     ← Back to Modules
@@ -587,18 +985,32 @@
                 <div id="sidebarContent"></div>
             </aside>
 
-            <!-- Workspace -->
+            <div class="admin-main-column">
+            <div class="admin-main-panel">
             <div class="admin-workspace">
                 <!-- Attendance Workspace -->
                 <div id="attendanceWorkspace" class="workspace-content">
                     <div class="workspace-header">
                         <div class="workspace-header-top">
-                            <button class="back-to-modules-btn back-to-modules-header">
+                            <button type="button" class="back-to-modules-btn back-to-modules-header">
                                 ← Back to Modules
                             </button>
                         </div>
-                        <h1 class="workspace-title">Attendance</h1>
-                        <p class="workspace-subtitle">Track staff attendance and manage devices</p>
+                        <div class="workspace-header-main">
+                            <div class="workspace-header-text">
+                                <h1 class="workspace-title">Attendance</h1>
+                                <p class="workspace-subtitle">Track staff attendance and manage devices</p>
+                            </div>
+                            <div class="workspace-header-tools" aria-hidden="true">
+                                <span class="header-tool-pill" title="Search">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                </span>
+                                <span class="header-tool-pill header-tool-pill--alert" title="Notifications">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span class="header-tool-badge">3</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div class="contextual-actions" id="attendanceActions"></div>
                     <div id="attendanceContent" class="card-grid"></div>
@@ -608,12 +1020,25 @@
                 <div id="visitorsWorkspace" class="workspace-content">
                     <div class="workspace-header">
                         <div class="workspace-header-top">
-                            <button class="back-to-modules-btn back-to-modules-header">
+                            <button type="button" class="back-to-modules-btn back-to-modules-header">
                                 ← Back to Modules
                             </button>
                         </div>
-                        <h1 class="workspace-title">Visitors</h1>
-                        <p class="workspace-subtitle">Handle visitor sign-ins and approvals</p>
+                        <div class="workspace-header-main">
+                            <div class="workspace-header-text">
+                                <h1 class="workspace-title">Visitors</h1>
+                                <p class="workspace-subtitle">Handle visitor sign-ins and approvals</p>
+                            </div>
+                            <div class="workspace-header-tools" aria-hidden="true">
+                                <span class="header-tool-pill" title="Search">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                </span>
+                                <span class="header-tool-pill header-tool-pill--alert" title="Notifications">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span class="header-tool-badge">3</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div class="contextual-actions" id="visitorsActions"></div>
                     <div id="visitorsContent" class="card-grid"></div>
@@ -623,12 +1048,25 @@
                 <div id="hrmWorkspace" class="workspace-content">
                     <div class="workspace-header">
                         <div class="workspace-header-top">
-                            <button class="back-to-modules-btn back-to-modules-header">
+                            <button type="button" class="back-to-modules-btn back-to-modules-header">
                                 ← Back to Modules
                             </button>
                         </div>
-                        <h1 class="workspace-title">Staff Records</h1>
-                        <p class="workspace-subtitle">Manage staff information, leaves, and documents</p>
+                        <div class="workspace-header-main">
+                            <div class="workspace-header-text">
+                                <h1 class="workspace-title">Staff Records</h1>
+                                <p class="workspace-subtitle">Manage staff information, leaves, and documents</p>
+                            </div>
+                            <div class="workspace-header-tools" aria-hidden="true">
+                                <span class="header-tool-pill" title="Search">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                </span>
+                                <span class="header-tool-pill header-tool-pill--alert" title="Notifications">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span class="header-tool-badge">3</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div class="contextual-actions" id="hrmActions"></div>
                     <div id="hrmContent" class="card-grid"></div>
@@ -638,12 +1076,25 @@
                 <div id="prsWorkspace" class="workspace-content">
                     <div class="workspace-header">
                         <div class="workspace-header-top">
-                            <button class="back-to-modules-btn back-to-modules-header">
+                            <button type="button" class="back-to-modules-btn back-to-modules-header">
                                 ← Back to Modules
                             </button>
                         </div>
-                        <h1 class="workspace-title">PRS Camp Monitoring</h1>
-                        <p class="workspace-subtitle">Camp events, QR codes, staff assignments, and attendance.</p>
+                        <div class="workspace-header-main">
+                            <div class="workspace-header-text">
+                                <h1 class="workspace-title">PRS Camp Monitoring</h1>
+                                <p class="workspace-subtitle">Camp events, QR codes, staff assignments, and attendance.</p>
+                            </div>
+                            <div class="workspace-header-tools" aria-hidden="true">
+                                <span class="header-tool-pill" title="Search">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                </span>
+                                <span class="header-tool-pill header-tool-pill--alert" title="Notifications">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span class="header-tool-badge">3</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div class="contextual-actions" id="prsActions"></div>
                     <div id="prsContent" class="card-grid"></div>
@@ -653,15 +1104,113 @@
                 <div id="systemWorkspace" class="workspace-content">
                     <div class="workspace-header">
                         <div class="workspace-header-top">
-                            <button class="back-to-modules-btn back-to-modules-header">
+                            <button type="button" class="back-to-modules-btn back-to-modules-header">
                                 ← Back to Modules
                             </button>
                         </div>
-                        <h1 class="workspace-title">System Settings</h1>
-                        <p class="workspace-subtitle">Manage formations, admins, and system configuration</p>
+                        <div class="workspace-header-main">
+                            <div class="workspace-header-text">
+                                <h1 class="workspace-title">System Settings</h1>
+                                <p class="workspace-subtitle">Manage formations, admins, and system configuration</p>
+                            </div>
+                            <div class="workspace-header-tools" aria-hidden="true">
+                                <span class="header-tool-pill" title="Search">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                </span>
+                                <span class="header-tool-pill header-tool-pill--alert" title="Notifications">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span class="header-tool-badge">3</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div id="systemContent" class="card-grid"></div>
                 </div>
+            </div>
+            </div>
+            </div>
+                <aside class="admin-utility-rail" aria-label="Dashboard overview">
+                    <div class="admin-rail-card admin-rail-profile">
+                        <div class="admin-rail-avatar" aria-hidden="true">NY</div>
+                        <div>
+                            <span class="admin-rail-name">NYSC Admin</span>
+                            <span class="admin-rail-meta">Signed in &#183; Control centre</span>
+                        </div>
+                    </div>
+                    <div class="admin-rail-card">
+                        <div class="admin-rail-card-head">
+                            <span class="admin-rail-nav" aria-hidden="true">&#8249;</span>
+                            <span class="admin-rail-month">April 2026</span>
+                            <span class="admin-rail-nav" aria-hidden="true">&#8250;</span>
+                        </div>
+                        <div class="admin-rail-cal-weekdays">
+                            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                        </div>
+                        <div class="admin-rail-cal-grid">
+                            <span class="admin-rail-day is-muted"></span>
+                            <span class="admin-rail-day is-muted"></span>
+                            <span class="admin-rail-day">1</span>
+                            <span class="admin-rail-day">2</span>
+                            <span class="admin-rail-day">3</span>
+                            <span class="admin-rail-day">4</span>
+                            <span class="admin-rail-day">5</span>
+                            <span class="admin-rail-day">6</span>
+                            <span class="admin-rail-day">7</span>
+                            <span class="admin-rail-day">8</span>
+                            <span class="admin-rail-day">9</span>
+                            <span class="admin-rail-day">10</span>
+                            <span class="admin-rail-day">11</span>
+                            <span class="admin-rail-day">12</span>
+                            <span class="admin-rail-day">13</span>
+                            <span class="admin-rail-day">14</span>
+                            <span class="admin-rail-day">15</span>
+                            <span class="admin-rail-day">16</span>
+                            <span class="admin-rail-day is-today">17</span>
+                            <span class="admin-rail-day">18</span>
+                            <span class="admin-rail-day">19</span>
+                            <span class="admin-rail-day">20</span>
+                            <span class="admin-rail-day">21</span>
+                            <span class="admin-rail-day">22</span>
+                            <span class="admin-rail-day">23</span>
+                            <span class="admin-rail-day">24</span>
+                            <span class="admin-rail-day">25</span>
+                            <span class="admin-rail-day">26</span>
+                            <span class="admin-rail-day">27</span>
+                            <span class="admin-rail-day">28</span>
+                            <span class="admin-rail-day">29</span>
+                            <span class="admin-rail-day">30</span>
+                        </div>
+                    </div>
+                    <div class="admin-rail-card">
+                        <h3 class="admin-rail-heading">Online now</h3>
+                        <ul class="admin-rail-list">
+                            <li>
+                                <span class="admin-rail-list-avatar" aria-hidden="true">FL</span>
+                                <div class="admin-rail-list-text">
+                                    <span class="admin-rail-list-name">Formation lead</span>
+                                    <span class="admin-rail-list-sub">Active session</span>
+                                </div>
+                                <span class="admin-rail-dot" aria-hidden="true"></span>
+                            </li>
+                            <li>
+                                <span class="admin-rail-list-avatar" aria-hidden="true">VD</span>
+                                <div class="admin-rail-list-text">
+                                    <span class="admin-rail-list-name">Visitor desk</span>
+                                    <span class="admin-rail-list-sub">Front desk mode</span>
+                                </div>
+                                <span class="admin-rail-dot" aria-hidden="true"></span>
+                            </li>
+                            <li>
+                                <span class="admin-rail-list-avatar" aria-hidden="true">PR</span>
+                                <div class="admin-rail-list-text">
+                                    <span class="admin-rail-list-name">PRS officer</span>
+                                    <span class="admin-rail-list-sub">Camp monitoring</span>
+                                </div>
+                                <span class="admin-rail-dot" aria-hidden="true"></span>
+                            </li>
+                        </ul>
+                    </div>
+                </aside>
             </div>
         </div>
     </main>

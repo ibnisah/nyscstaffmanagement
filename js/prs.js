@@ -78,6 +78,9 @@
 
     // ---- Admin bootstrap (SUPER_ADMIN) ----
     initializeSheets: (key) => call('prsInitializeSheets', { key }),
+
+    // ---- SUPER_ADMIN exclusive: mark attendance on behalf of a staff ----
+    adminMarkAttendance: (key, body) => call('prsAdminMarkAttendance', Object.assign({ key }, body)),
   };
 
   // Public staff-facing (no adminKey). Used by prs-camp.html.
@@ -147,11 +150,11 @@
 
   // ---- Action bar (contextual tabs) ----
   const PRS_VIEWS = [
-    { view: 'dashboard',   label: 'Overview',    icon: '📊' },
-    { view: 'events',      label: 'Events',      icon: '🗓️' },
-    { view: 'camps',       label: 'Camps',       icon: '🏕️' },
-    { view: 'assignments', label: 'Assignments', icon: '👥' },
-    { view: 'logs',        label: 'Attendance',  icon: '📋' },
+    { view: 'dashboard',   label: 'Overview',      icon: '📊' },
+    { view: 'events',      label: 'Events',        icon: '🗓️' },
+    { view: 'camps',       label: 'Camps',         icon: '🏕️' },
+    { view: 'assignments', label: 'Assignments',   icon: '👥' },
+    { view: 'logs',        label: 'Attendance',    icon: '📋' },
     { view: 'summary',     label: 'Daily Summary', icon: '📈' },
   ];
 
@@ -179,12 +182,12 @@
     if (!container) return;
     container.innerHTML = '<div class="info info-muted">Loading…</div>';
     try {
-      if (view === 'dashboard')       return await renderDashboard(container);
-      if (view === 'events')          return await renderEvents(container);
-      if (view === 'camps')           return await renderCamps(container);
-      if (view === 'assignments')     return await renderAssignments(container);
-      if (view === 'logs')            return await renderLogs(container);
-      if (view === 'summary')         return await renderSummary(container);
+      if (view === 'dashboard')    return await renderDashboard(container);
+      if (view === 'events')       return await renderEvents(container);
+      if (view === 'camps')        return await renderCamps(container);
+      if (view === 'assignments')  return await renderAssignments(container);
+      if (view === 'logs')         return await renderLogs(container);
+      if (view === 'summary')      return await renderSummary(container);
       container.innerHTML = '<div class="info info-muted">Unknown view.</div>';
     } catch (e) {
       container.innerHTML = `<div class="info info-error">Failed: ${esc(e.message || e)}</div>`;
@@ -749,16 +752,12 @@
         wrap.innerHTML = `
           <table class="data-table">
             <thead>
-              <tr><th>When</th><th>Action</th><th>Staff</th><th>Phone</th><th>Camp</th><th>Event</th><th>Distance (m)</th></tr>
+              <tr><th>When</th><th>Action</th><th>Staff</th><th>Phone</th><th>Camp</th><th>Event</th></tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
+                ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
                 : rows.map(l => {
-                    // Admin-friendly labels only. We intentionally do NOT fall
-                    // back to the raw internal IDs (EVT_…, CAMP_…) — if a
-                    // camp/event was deleted we show a neutral placeholder
-                    // instead so operators never see the long system name.
                     const campLabel = l.campName
                       ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
                       : '— (camp removed)';
@@ -771,7 +770,6 @@
                         <td>${esc(l.phone)}</td>
                         <td>${esc(campLabel)}</td>
                         <td>${esc(eventLabel)}</td>
-                        <td>${l.distanceMeters != null ? Math.round(Number(l.distanceMeters)) : ''}</td>
                       </tr>
                     `;
                   }).join('')}

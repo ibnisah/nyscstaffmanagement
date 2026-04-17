@@ -1164,6 +1164,48 @@ const AdminPage = (function () {
   }
 
   /**
+   * Role-based fallback module list, used when the backend's
+   * getAvailableModules can't be reached or returns an empty payload.
+   * Each entry mirrors the shape of a registered module.
+   */
+  function getFallbackModulesForRole(role) {
+    if (role === 'SUPER_ADMIN') {
+      return [
+        { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
+        { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
+        { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
+        { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' },
+        { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
+      ];
+    }
+    if (role === 'FORMATION_ADMIN') {
+      return [
+        { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
+        { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' },
+        { id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' },
+        { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' }
+      ];
+    }
+    if (isHrmAdminRole(role)) {
+      return [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
+    }
+    if (role === 'PRS_ADMIN') {
+      return [{ id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' }];
+    }
+    if (role === 'ATTENDANCE_ADMIN') {
+      return [{ id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' }];
+    }
+    if (role === 'VISITORS_ADMIN') {
+      return [{ id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }];
+    }
+    // Default (DEPARTMENT_ADMIN, EMPLOYEE, etc.)
+    return [
+      { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
+      { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }
+    ];
+  }
+
+  /**
    * Load available modules for the current admin and filter the module selector
    */
   async function loadAvailableModules() {
@@ -1201,43 +1243,11 @@ const AdminPage = (function () {
           modules = res.data.modules;
         } else {
           console.warn('No modules returned from getAvailableModules');
-          // Fallback: show basic modules based on role
-          if (adminRole === 'SUPER_ADMIN') {
-            modules = [
-              { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
-              { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
-              { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
-              { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' },
-              { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
-            ];
-          } else if (isHrmAdminRole(adminRole)) {
-            modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
-          } else {
-            modules = [
-              { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
-              { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }
-            ];
-          }
+          modules = getFallbackModulesForRole(adminRole);
         }
       } catch (apiError) {
         console.error('Error fetching available modules:', apiError);
-        // Fallback: show basic modules based on role
-        if (adminRole === 'SUPER_ADMIN') {
-          modules = [
-            { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance and manage devices', icon: '📊' },
-            { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins and approvals', icon: '👥' },
-            { id: 'HRM', name: 'Staff Records', description: 'Manage staff information, leaves, and documents', icon: '👔' },
-            { id: 'PRS', name: 'Planning, Research & Statistics', description: 'Camp monitoring, QR sign-in/out', icon: '🏕️' },
-            { id: 'SYSTEM_ADMIN', name: 'System Settings', description: 'Manage formations, admins, and system configuration', icon: '⚙️' }
-          ];
-        } else if (isHrmAdminRole(adminRole)) {
-          modules = [{ id: 'HRM', name: 'Staff Records', description: 'Manage staff information', icon: '👔' }];
-        } else {
-          modules = [
-            { id: 'ATTENDANCE', name: 'Attendance', description: 'Track staff attendance', icon: '📊' },
-            { id: 'VISITORS', name: 'Visitors', description: 'Handle visitor sign-ins', icon: '👥' }
-          ];
-        }
+        modules = getFallbackModulesForRole(adminRole);
       }
 
       // Map module IDs to frontend module names
@@ -1988,6 +1998,7 @@ const AdminPage = (function () {
           <option value="ATTENDANCE">Attendance (formation + department scoped)</option>
           <option value="VISITORS">Visitors (formation + department scoped)</option>
           <option value="HRM">HRM (department-specific, nationwide)</option>
+          <option value="PRS">PRS Camp Monitoring (formation-wide)</option>
         </select>
         <div id="swalAdminScopeAttendanceVisitors" style="display:none;">
           <label class="swal2-label" style="text-align:left;display:block;">Formation *</label>
@@ -2015,6 +2026,14 @@ const AdminPage = (function () {
             <option value="HRM_VIEWER">HRM Viewer</option>
           </select>
         </div>
+        <div id="swalAdminScopePRS" style="display:none;">
+          <label class="swal2-label" style="text-align:left;display:block;">Formation *</label>
+          <select id="swalAdminFormationPrs" class="swal2-select" style="width: 100%; margin-bottom: 12px;">
+            <option value="">Select Formation *</option>
+            ${formationOptions}
+          </select>
+          <p style="font-size:0.82rem;color:#666;margin:0 0 10px;">PRS admins have formation-wide access to all camps and assignments within their formation. They cannot mark attendance on behalf of others (Super Admin only).</p>
+        </div>
         <label class="swal2-label" style="text-align:left;display:block;">Admin Key (for login) *</label>
         <input id="swalAdminKey" class="swal2-input" placeholder="Admin Key *">
         <label class="swal2-label" style="text-align:left;display:block;">Name *</label>
@@ -2039,9 +2058,11 @@ const AdminPage = (function () {
 
         function toggleScope() {
           const v = (moduleEl && moduleEl.value) || '';
-          if (scopeAV) scopeAV.style.display = (v === 'ATTENDANCE' || v === 'VISITORS') ? 'block' : 'none';
-          if (scopeHRM) scopeHRM.style.display = v === 'HRM' ? 'block' : 'none';
+          if (scopeAV)  scopeAV.style.display  = (v === 'ATTENDANCE' || v === 'VISITORS') ? 'block' : 'none';
+          if (scopeHRM) scopeHRM.style.display  = v === 'HRM' ? 'block' : 'none';
           if (emailWrap) emailWrap.style.display = v === 'HRM' ? 'block' : 'none';
+          const scopePRS = document.getElementById('swalAdminScopePRS');
+          if (scopePRS) scopePRS.style.display = v === 'PRS' ? 'block' : 'none';
         }
         moduleEl && moduleEl.addEventListener('change', toggleScope);
 
@@ -2128,6 +2149,30 @@ const AdminPage = (function () {
           } catch (err) {
             UI.closeLoading();
             Swal.showValidationMessage(err.message || 'Failed to create HRM admin.');
+            return false;
+          }
+        }
+
+        if (moduleVal === 'PRS') {
+          const formationVal = document.getElementById('swalAdminFormationPrs').value.trim();
+          if (!formationVal) {
+            Swal.showValidationMessage('Formation is required for PRS admin.');
+            return false;
+          }
+          try {
+            UI.showLoading('Saving', 'Creating PRS admin...');
+            await Api.call('createAdmin', {
+              key: adminKey,
+              newKey: keyVal,
+              role: 'PRS_ADMIN',
+              formationId: formationVal,
+              name: nameVal,
+            });
+            UI.closeLoading();
+            return true;
+          } catch (err) {
+            UI.closeLoading();
+            Swal.showValidationMessage(err.message || 'Failed to create PRS admin.');
             return false;
           }
         }
@@ -7575,6 +7620,13 @@ const AdminPage = (function () {
             <span>Module Reset (Testing)</span>
           </a>
         </div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">PRS Tools</div>
+          <a href="#" class="sidebar-link" data-view="prs-mark-attendance">
+            <span class="sidebar-link-icon">✍️</span>
+            <span>Mark PRS Attendance</span>
+          </a>
+        </div>
       `;
 
       sidebarContent.innerHTML = html;
@@ -9249,9 +9301,207 @@ const AdminPage = (function () {
       if (runArchivalBtn) runArchivalBtn.addEventListener('click', runArchival);
       if (refreshRetentionBtn) refreshRetentionBtn.addEventListener('click', loadRetentionPolicy);
       await loadRetentionPolicy();
+    } else if (view === 'prs-mark-attendance') {
+      await loadPrsMarkAttendanceView(container);
     } else {
       container.innerHTML = `<div class="info info-muted">Loading System ${view}...</div>`;
     }
+  }
+
+  /**
+   * PRS — Mark Attendance on Behalf of Staff (Super Admin only).
+   * Allows the Super Admin to record a SIGN_IN or SIGN_OUT for a PRS officer
+   * who had field challenges. The log row written is structurally identical to
+   * a QR-scanned staff entry — no other admin can tell the difference.
+   */
+  async function loadPrsMarkAttendanceView(container) {
+    if (!adminKey || adminRole !== 'SUPER_ADMIN') {
+      container.innerHTML = '<div class="info info-muted">Access denied. Super Admin only.</div>';
+      return;
+    }
+
+    const esc = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    // Load PRS events for the picker
+    let events = [];
+    try {
+      const evRes = await Api.call('prsListEvents', { key: adminKey, status: '' });
+      events = (evRes && evRes.data && evRes.data.events) || [];
+    } catch (e) { /* render with empty list */ }
+
+    container.innerHTML = `
+      <section class="card card-full-width">
+        <h2>Mark PRS Attendance on Behalf of Staff</h2>
+        <p class="info info-muted" style="margin-bottom:1.25rem;">
+          Use this when a PRS field officer could not sign in/out via QR scan (e.g. phone failure, connectivity issue).
+          The record written is structurally identical to a staff-scanned entry — no other admin sees any difference.
+        </p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
+          <div>
+            <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Event</label>
+            <select id="sysMarkEvent" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+              <option value="">Select event…</option>
+              ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Camp (optional)</label>
+            <select id="sysMarkCamp" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+              <option value="">All camps</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrapper" id="sysMarkAsgWrap" style="margin-bottom:1.25rem;">
+          <p class="info info-muted">Select an event above to load assignments.</p>
+        </div>
+
+        <hr style="margin:1.25rem 0;border:none;border-top:1px solid var(--border-soft);" />
+
+        <div id="sysMarkForm" style="display:none;max-width:520px;">
+          <h3 style="margin-bottom:0.75rem;">Record Attendance</h3>
+          <p id="sysMarkStaffLabel" style="font-weight:600;color:var(--ink);margin-bottom:1rem;"></p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+            <div>
+              <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Action *</label>
+              <select id="sysMarkAction" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+                <option value="SIGN_IN">Sign In</option>
+                <option value="SIGN_OUT">Sign Out</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Date (defaults to today)</label>
+              <input type="date" id="sysMarkDate" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);" />
+            </div>
+          </div>
+          <button class="btn btn-primary" id="sysMarkSubmitBtn">Record Attendance</button>
+          <div id="sysMarkStatus" style="margin-top:0.75rem;"></div>
+        </div>
+      </section>
+    `;
+
+    const evSel   = document.getElementById('sysMarkEvent');
+    const campSel = document.getElementById('sysMarkCamp');
+    const asgWrap = document.getElementById('sysMarkAsgWrap');
+    const form    = document.getElementById('sysMarkForm');
+    let selectedAssignment = null;
+
+    function selectAssignment(asg) {
+      selectedAssignment = asg;
+      const lbl = document.getElementById('sysMarkStaffLabel');
+      if (lbl) lbl.textContent =
+        `Staff: ${asg.staffName}  |  Phone: ${asg.phone}  |  Camp: ${asg.campName || asg.campId}`;
+      form.style.display = 'block';
+      const statusEl = document.getElementById('sysMarkStatus');
+      if (statusEl) statusEl.innerHTML = '';
+    }
+
+    async function loadMarkCamps() {
+      campSel.innerHTML = '<option value="">All camps</option>';
+      if (!evSel.value) return;
+      try {
+        const r = await Api.call('prsListCamps', { key: adminKey, eventId: evSel.value });
+        const camps = (r && r.data && r.data.camps) || [];
+        camps.forEach(c => {
+          const o = document.createElement('option');
+          o.value = c.campId;
+          o.textContent = `${c.campName} — ${c.state}`;
+          campSel.appendChild(o);
+        });
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadMarkAssignments() {
+      selectedAssignment = null;
+      form.style.display = 'none';
+      if (!evSel.value) {
+        asgWrap.innerHTML = '<p class="info info-muted">Select an event above to load assignments.</p>';
+        return;
+      }
+      asgWrap.innerHTML = '<div class="info info-muted">Loading…</div>';
+      try {
+        const r = await Api.call('prsListAssignments', {
+          key: adminKey,
+          eventId: evSel.value,
+          campId: campSel.value || '',
+        });
+        const rows = (r && r.data && r.data.assignments) || [];
+        if (rows.length === 0) {
+          asgWrap.innerHTML = '<p class="info info-muted">No assignments for this event/camp.</p>';
+          return;
+        }
+        asgWrap.innerHTML = `
+          <table class="data-table">
+            <thead>
+              <tr><th>Name</th><th>Phone</th><th>Department</th><th>Camp</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              ${rows.map(a => `
+                <tr data-asg-id="${esc(a.assignmentId)}">
+                  <td>${esc(a.staffName)}</td>
+                  <td>${esc(a.phone)}</td>
+                  <td>${esc(a.department || '')}</td>
+                  <td>${esc(a.campName || a.campId || '')}</td>
+                  <td><span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span></td>
+                  <td>
+                    <button class="btn btn-xs btn-primary sys-mark-select-btn"
+                      ${String(a.status).toUpperCase() !== 'ACTIVE' ? 'disabled title="Assignment is not active"' : ''}>
+                      Select
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+        asgWrap.querySelectorAll('.sys-mark-select-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const asgId = btn.closest('tr').dataset.asgId;
+            const asg = rows.find(x => String(x.assignmentId) === String(asgId));
+            if (asg) selectAssignment(asg);
+            asgWrap.querySelectorAll('tbody tr').forEach(r => r.style.background = '');
+            btn.closest('tr').style.background = 'var(--nysc-green-mist)';
+          });
+        });
+      } catch (e) {
+        asgWrap.innerHTML = `<div class="info info-error">${esc(e.message || 'Failed to load assignments.')}</div>`;
+      }
+    }
+
+    evSel.addEventListener('change', async () => { await loadMarkCamps(); await loadMarkAssignments(); });
+    campSel.addEventListener('change', loadMarkAssignments);
+
+    document.getElementById('sysMarkSubmitBtn').addEventListener('click', async () => {
+      if (!selectedAssignment) {
+        UI.showError('No Staff Selected', 'Please select a staff assignment from the table first.');
+        return;
+      }
+      const action  = document.getElementById('sysMarkAction').value;
+      const dateStr = document.getElementById('sysMarkDate').value || '';
+      const statusEl = document.getElementById('sysMarkStatus');
+      statusEl.innerHTML = '<span class="info info-muted">Saving…</span>';
+      try {
+        UI.showLoading('Recording', 'Writing attendance record…');
+        const r = await Api.call('prsAdminMarkAttendance', {
+          key: adminKey,
+          assignmentId: selectedAssignment.assignmentId,
+          action,
+          dateStr: dateStr || undefined,
+        });
+        UI.closeLoading();
+        statusEl.innerHTML =
+          `<span class="info info-success">✓ ${esc(r.message || 'Recorded successfully.')}</span>`;
+        await UI.showSuccess('Done', r.message || 'Attendance recorded successfully.');
+      } catch (e) {
+        UI.closeLoading();
+        statusEl.innerHTML =
+          `<span class="info info-error">✗ ${esc(e.message || 'Failed.')}</span>`;
+        await UI.showError('Failed', e.message || 'Could not record attendance.');
+      }
+    });
   }
 
   async function loadModuleResetSheets() {
