@@ -128,6 +128,163 @@
     return d.toISOString().slice(0, 10);
   }
 
+  // ---------------------------------------------------------------------------
+  // Reusable paginated table view (search + S/N + 10-per-page pagination).
+  //
+  // Usage:
+  //   const view = paginatedTableView({
+  //     wrap:             <HTMLElement container>,
+  //     rows:             <Array of row objects>,
+  //     columns:          [{ label, render(row, serialNumber) -> html }],
+  //     searchFields:     (row) -> string used for case-insensitive substring match,
+  //     searchPlaceholder:'Search…',
+  //     emptyText:        'No entries.',
+  //     rowAttrs:         (row) -> extra attrs for <tr> (optional),
+  //     onAfterRender:    (tbody, pageRows) -> wire up row action buttons (optional),
+  //   });
+  //   view.setRows(newRows);   // swap dataset, resets to page 1
+  //   view.refresh();          // re-render current state
+  // ---------------------------------------------------------------------------
+  const PRS_PAGE_SIZE = 10;
+
+  function paginatedTableView(opts) {
+    const wrap = opts.wrap;
+    if (!wrap) throw new Error('paginatedTableView: wrap element is required.');
+
+    let currentPage = 1;
+    let searchQuery = '';
+    let rows = Array.isArray(opts.rows) ? opts.rows.slice() : [];
+
+    wrap.innerHTML = `
+      <div class="prs-table-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.75rem;">
+        <input type="search" class="prs-table-search"
+          placeholder="${esc(opts.searchPlaceholder || 'Search…')}"
+          style="flex:1;min-width:220px;max-width:400px;padding:0.5rem 0.75rem;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem;" />
+        <div class="prs-table-meta" style="font-size:0.85rem;color:var(--text-muted,#6b7280);"></div>
+      </div>
+      <div class="prs-table-body table-wrapper"></div>
+      <div class="prs-table-pagination" style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-top:1rem;"></div>
+    `;
+
+    const searchInput = wrap.querySelector('.prs-table-search');
+    const metaEl      = wrap.querySelector('.prs-table-meta');
+    const bodyEl      = wrap.querySelector('.prs-table-body');
+    const pagEl       = wrap.querySelector('.prs-table-pagination');
+
+    function matches(row) {
+      if (!searchQuery) return true;
+      const val = (typeof opts.searchFields === 'function' ? opts.searchFields(row) : '') || '';
+      return String(val).toLowerCase().indexOf(searchQuery) !== -1;
+    }
+
+    function render() {
+      const filtered  = rows.filter(matches);
+      const total     = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / PRS_PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+      const startIdx  = (currentPage - 1) * PRS_PAGE_SIZE;
+      const pageRows  = filtered.slice(startIdx, startIdx + PRS_PAGE_SIZE);
+
+      const colCount  = (opts.columns || []).length + 1; // +1 for S/N
+      const theadHtml = '<thead><tr><th style="width:60px;">S/N</th>'
+        + (opts.columns || []).map(c => `<th>${c.label}</th>`).join('')
+        + '</tr></thead>';
+
+      let tbodyHtml;
+      if (pageRows.length === 0) {
+        const msg = searchQuery
+          ? 'No entries match your search.'
+          : (opts.emptyText || 'No entries.');
+        tbodyHtml = `<tr><td colspan="${colCount}" style="text-align:center;color:var(--text-muted);padding:1rem;">${esc(msg)}</td></tr>`;
+      } else {
+        tbodyHtml = pageRows.map((row, i) => {
+          const sn = startIdx + i + 1;
+          const attrs = (typeof opts.rowAttrs === 'function') ? (opts.rowAttrs(row) || '') : '';
+          const cells = (opts.columns || []).map(c => `<td>${c.render(row, sn)}</td>`).join('');
+          return `<tr ${attrs}><td>${sn}</td>${cells}</tr>`;
+        }).join('');
+      }
+      bodyEl.innerHTML = `<table class="data-table">${theadHtml}<tbody>${tbodyHtml}</tbody></table>`;
+
+      // Summary meta
+      if (total === 0) {
+        metaEl.textContent = searchQuery ? 'No matches' : '0 entries';
+      } else {
+        const from = startIdx + 1;
+        const to   = startIdx + pageRows.length;
+        metaEl.textContent = `Showing ${from}–${to} of ${total}${searchQuery ? ' (filtered)' : ''}`;
+      }
+
+      // Pagination controls
+      pagEl.innerHTML = '';
+      if (total > 0 && totalPages > 1) {
+        const btn = (label, page, disabled, active) =>
+          `<button type="button" class="btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}"`
+          + ` ${disabled ? 'disabled' : ''} data-prs-page="${page}"`
+          + `${active ? ' style="background:var(--nysc-green,#059669);color:#fff;"' : ''}>${label}</button>`;
+
+        let html = '';
+        html += btn('« Prev', currentPage - 1, currentPage === 1, false);
+
+        const windowStart = Math.max(1, currentPage - 2);
+        const windowEnd   = Math.min(totalPages, currentPage + 2);
+        if (windowStart > 1) {
+          html += btn('1', 1, false, false);
+          if (windowStart > 2) html += '<span style="padding:0 0.25rem;color:var(--text-muted);">…</span>';
+        }
+        for (let p = windowStart; p <= windowEnd; p++) {
+          html += btn(String(p), p, false, p === currentPage);
+        }
+        if (windowEnd < totalPages) {
+          if (windowEnd < totalPages - 1) html += '<span style="padding:0 0.25rem;color:var(--text-muted);">…</span>';
+          html += btn(String(totalPages), totalPages, false, false);
+        }
+        html += btn('Next »', currentPage + 1, currentPage === totalPages, false);
+        html += `<span style="margin-left:0.5rem;color:var(--text-muted,#6b7280);font-size:0.85rem;">Page ${currentPage} of ${totalPages}</span>`;
+
+        pagEl.innerHTML = html;
+        pagEl.querySelectorAll('button[data-prs-page]').forEach(b => {
+          if (b.disabled) return;
+          b.addEventListener('click', () => {
+            const p = parseInt(b.getAttribute('data-prs-page'), 10);
+            if (!isNaN(p) && p !== currentPage) { currentPage = p; render(); }
+          });
+        });
+      }
+
+      // Hook for wiring per-row action buttons
+      const tbody = bodyEl.querySelector('tbody');
+      if (tbody && typeof opts.onAfterRender === 'function') {
+        opts.onAfterRender(tbody, pageRows);
+      }
+    }
+
+    // Debounced search
+    let searchTimer = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (q === searchQuery) return;
+        searchQuery = q;
+        currentPage = 1;
+        render();
+      }, 150);
+    });
+
+    render();
+
+    return {
+      setRows(newRows) {
+        rows = Array.isArray(newRows) ? newRows.slice() : [];
+        currentPage = 1;
+        render();
+      },
+      refresh: render,
+    };
+  }
+
   function toast(msg, type) {
     if (typeof Swal !== 'undefined') {
       Swal.fire({
@@ -220,18 +377,21 @@
 
       <section class="card card-full-width">
         <h3>Events</h3>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead><tr><th>Event</th><th>Status</th></tr></thead>
-            <tbody>
-              ${events.length === 0
-                ? '<tr><td colspan="2" style="text-align:center;color:var(--text-muted);">No events yet.</td></tr>'
-                : events.map(e => `<tr><td>${esc(e.eventName)}</td><td>${esc(e.status)}</td></tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
+        <div id="prsDashEventsWrap"></div>
       </section>
     `;
+
+    paginatedTableView({
+      wrap: document.getElementById('prsDashEventsWrap'),
+      rows: events,
+      searchPlaceholder: 'Search by event name or status…',
+      emptyText: 'No events yet.',
+      searchFields: e => [e.eventName, e.status].filter(Boolean).join(' '),
+      columns: [
+        { label: 'Event',  render: e => esc(e.eventName) },
+        { label: 'Status', render: e => esc(e.status) },
+      ],
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -247,60 +407,56 @@
           <h2>Camp Events</h2>
           <button class="btn btn-primary" id="prsCreateEventBtn">➕ New Event</button>
         </div>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr><th>Name</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              ${events.length === 0
-                ? '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No events. Click "New Event" to create one.</td></tr>'
-                : events.map(e => `
-                  <tr data-event-id="${esc(e.eventId)}">
-                    <td>${esc(e.eventName)}</td>
-                    <td>${esc(fmtDateOnly(e.startDate))}</td>
-                    <td>${esc(fmtDateOnly(e.endDate))}</td>
-                    <td><span class="badge badge-${String(e.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(e.status)}</span></td>
-                    <td>
-                      <button class="btn btn-xs btn-secondary prs-edit-event">Edit</button>
-                      ${String(e.status).toUpperCase() === 'ACTIVE'
-                        ? '<button class="btn btn-xs btn-danger prs-close-event">Close</button>'
-                        : ''}
-                    </td>
-                  </tr>
-                `).join('')}
-            </tbody>
-          </table>
-        </div>
+        <div id="prsEventsWrap"></div>
       </section>
     `;
 
     document.getElementById('prsCreateEventBtn').addEventListener('click', () => showEventModal(null, container));
 
-    container.querySelectorAll('.prs-edit-event').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tr = btn.closest('tr');
-        const eventId = tr.getAttribute('data-event-id');
-        const ev = events.find(x => String(x.eventId) === eventId);
-        showEventModal(ev, container);
-      });
-    });
-    container.querySelectorAll('.prs-close-event').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const tr = btn.closest('tr');
-        const eventId = tr.getAttribute('data-event-id');
-        const c = await Swal.fire({
-          icon: 'warning', title: 'Close this event?',
-          text: 'Closed events cannot accept new sign-ins. Camps remain read-only.',
-          showCancelButton: true, confirmButtonText: 'Close Event',
+    paginatedTableView({
+      wrap: document.getElementById('prsEventsWrap'),
+      rows: events,
+      searchPlaceholder: 'Search by event name or status…',
+      emptyText: 'No events. Click "New Event" to create one.',
+      searchFields: e => [e.eventName, e.status, fmtDateOnly(e.startDate), fmtDateOnly(e.endDate)].filter(Boolean).join(' '),
+      rowAttrs: e => `data-event-id="${esc(e.eventId)}"`,
+      columns: [
+        { label: 'Name',   render: e => esc(e.eventName) },
+        { label: 'Start',  render: e => esc(fmtDateOnly(e.startDate)) },
+        { label: 'End',    render: e => esc(fmtDateOnly(e.endDate)) },
+        { label: 'Status', render: e => `<span class="badge badge-${String(e.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(e.status)}</span>` },
+        { label: 'Actions', render: e => `
+            <button class="btn btn-xs btn-secondary prs-edit-event">Edit</button>
+            ${String(e.status).toUpperCase() === 'ACTIVE'
+              ? '<button class="btn btn-xs btn-danger prs-close-event">Close</button>'
+              : ''}
+          ` },
+      ],
+      onAfterRender: (tbody) => {
+        tbody.querySelectorAll('.prs-edit-event').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const eventId = btn.closest('tr').getAttribute('data-event-id');
+            const ev = events.find(x => String(x.eventId) === eventId);
+            showEventModal(ev, container);
+          });
         });
-        if (!c.isConfirmed) return;
-        try {
-          await PrsApi.closeEvent(ctx.adminKey, eventId);
-          toast('Event closed.', 'success');
-          renderEvents(container);
-        } catch (e) { err(e); }
-      });
+        tbody.querySelectorAll('.prs-close-event').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const eventId = btn.closest('tr').getAttribute('data-event-id');
+            const c = await Swal.fire({
+              icon: 'warning', title: 'Close this event?',
+              text: 'Closed events cannot accept new sign-ins. Camps remain read-only.',
+              showCancelButton: true, confirmButtonText: 'Close Event',
+            });
+            if (!c.isConfirmed) return;
+            try {
+              await PrsApi.closeEvent(ctx.adminKey, eventId);
+              toast('Event closed.', 'success');
+              renderEvents(container);
+            } catch (e) { err(e); }
+          });
+        });
+      },
     });
   }
 
@@ -393,55 +549,54 @@
       try {
         const res = await PrsApi.listCamps(ctx.adminKey, eventId);
         const camps = (res && res.data && res.data.camps) || [];
-        tableWrap.innerHTML = `
-          <table class="data-table">
-            <thead>
-              <tr><th>Name</th><th>State</th><th>GPS</th><th>Radius (m)</th><th>QR Token</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              ${camps.length === 0
-                ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No camps for this event yet.</td></tr>'
-                : camps.map(c => `
-                  <tr data-camp-id="${esc(c.campId)}">
-                    <td>${esc(c.campName)}</td>
-                    <td>${esc(c.state)}</td>
-                    <td>${Number(c.latitude).toFixed(5)}, ${Number(c.longitude).toFixed(5)}</td>
-                    <td>${esc(c.radiusMeters)}</td>
-                    <td><code style="font-size:0.75rem;">${esc(c.qrToken.slice(0, 10))}…</code></td>
-                    <td>
-                      <button class="btn btn-xs btn-secondary prs-camp-qr">QR</button>
-                      <button class="btn btn-xs btn-secondary prs-camp-edit">Edit</button>
-                      <button class="btn btn-xs btn-secondary prs-camp-regen">Regen Token</button>
-                      <button class="btn btn-xs btn-danger prs-camp-del">Delete</button>
-                    </td>
-                  </tr>
-                `).join('')}
-            </tbody>
-          </table>
-        `;
-        tableWrap.querySelectorAll('.prs-camp-qr').forEach(b => b.addEventListener('click', () => showCampQr(b.closest('tr').dataset.campId)));
-        tableWrap.querySelectorAll('.prs-camp-edit').forEach(b => b.addEventListener('click', () => {
-          const camp = camps.find(x => String(x.campId) === b.closest('tr').dataset.campId);
-          showCampModal(eventId, camp, reload);
-        }));
-        tableWrap.querySelectorAll('.prs-camp-regen').forEach(b => b.addEventListener('click', async () => {
-          const c = await Swal.fire({ icon: 'warning', title: 'Regenerate QR token?', text: 'The old QR code will stop working.', showCancelButton: true });
-          if (!c.isConfirmed) return;
-          try {
-            await PrsApi.regenerateCampToken(ctx.adminKey, b.closest('tr').dataset.campId);
-            toast('Token regenerated.', 'success');
-            reload();
-          } catch (e) { err(e); }
-        }));
-        tableWrap.querySelectorAll('.prs-camp-del').forEach(b => b.addEventListener('click', async () => {
-          const c = await Swal.fire({ icon: 'warning', title: 'Delete this camp?', text: 'Only possible if there are no attendance logs yet.', showCancelButton: true });
-          if (!c.isConfirmed) return;
-          try {
-            await PrsApi.deleteCamp(ctx.adminKey, b.closest('tr').dataset.campId);
-            toast('Camp deleted.', 'success');
-            reload();
-          } catch (e) { err(e); }
-        }));
+        tableWrap.innerHTML = '<div id="prsCampsViewWrap"></div>';
+
+        paginatedTableView({
+          wrap: document.getElementById('prsCampsViewWrap'),
+          rows: camps,
+          searchPlaceholder: 'Search by camp name or state…',
+          emptyText: 'No camps for this event yet.',
+          searchFields: c => [c.campName, c.state].filter(Boolean).join(' '),
+          rowAttrs: c => `data-camp-id="${esc(c.campId)}"`,
+          columns: [
+            { label: 'Name',  render: c => esc(c.campName) },
+            { label: 'State', render: c => esc(c.state) },
+            { label: 'GPS',   render: c => `${Number(c.latitude).toFixed(5)}, ${Number(c.longitude).toFixed(5)}` },
+            { label: 'Radius (m)', render: c => esc(c.radiusMeters) },
+            { label: 'QR Token',   render: c => `<code style="font-size:0.75rem;">${esc(String(c.qrToken || '').slice(0, 10))}…</code>` },
+            { label: 'Actions', render: () => `
+                <button class="btn btn-xs btn-secondary prs-camp-qr">QR</button>
+                <button class="btn btn-xs btn-secondary prs-camp-edit">Edit</button>
+                <button class="btn btn-xs btn-secondary prs-camp-regen">Regen Token</button>
+                <button class="btn btn-xs btn-danger prs-camp-del">Delete</button>
+              ` },
+          ],
+          onAfterRender: (tbody) => {
+            tbody.querySelectorAll('.prs-camp-qr').forEach(b => b.addEventListener('click', () => showCampQr(b.closest('tr').dataset.campId)));
+            tbody.querySelectorAll('.prs-camp-edit').forEach(b => b.addEventListener('click', () => {
+              const camp = camps.find(x => String(x.campId) === b.closest('tr').dataset.campId);
+              showCampModal(eventId, camp, reload);
+            }));
+            tbody.querySelectorAll('.prs-camp-regen').forEach(b => b.addEventListener('click', async () => {
+              const c = await Swal.fire({ icon: 'warning', title: 'Regenerate QR token?', text: 'The old QR code will stop working.', showCancelButton: true });
+              if (!c.isConfirmed) return;
+              try {
+                await PrsApi.regenerateCampToken(ctx.adminKey, b.closest('tr').dataset.campId);
+                toast('Token regenerated.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+            tbody.querySelectorAll('.prs-camp-del').forEach(b => b.addEventListener('click', async () => {
+              const c = await Swal.fire({ icon: 'warning', title: 'Delete this camp?', text: 'Only possible if there are no attendance logs yet.', showCancelButton: true });
+              if (!c.isConfirmed) return;
+              try {
+                await PrsApi.deleteCamp(ctx.adminKey, b.closest('tr').dataset.campId);
+                toast('Camp deleted.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+          },
+        });
       } catch (e) {
         tableWrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
@@ -601,46 +756,46 @@
           return c ? `${c.campName} (${c.state})` : '';
         };
 
-        tableWrap.innerHTML = `
-          <table class="data-table">
-            <thead>
-              <tr><th>Name</th><th>Phone</th><th>Department</th><th>Event</th><th>Camp</th><th>Required Days</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-              ${rows.length === 0
-                ? '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No assignments yet.</td></tr>'
-                : rows.map(a => `
-                  <tr data-asg-id="${esc(a.assignmentId)}">
-                    <td>${esc(a.staffName)}</td>
-                    <td>${esc(a.phone)}</td>
-                    <td>${esc(a.department)}</td>
-                    <td>${esc(a.eventName || '')}</td>
-                    <td>${esc(campLabel(a))}</td>
-                    <td>${esc(a.requiredDays)}</td>
-                    <td><span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span></td>
-                    <td>
-                      <button class="btn btn-xs btn-secondary prs-asg-edit">Edit</button>
-                      <button class="btn btn-xs btn-danger prs-asg-del">Remove</button>
-                    </td>
-                  </tr>
-                `).join('')}
-            </tbody>
-          </table>
-        `;
+        tableWrap.innerHTML = '<div id="prsAsgViewWrap"></div>';
 
-        tableWrap.querySelectorAll('.prs-asg-edit').forEach(b => b.addEventListener('click', () => {
-          const a = rows.find(x => String(x.assignmentId) === b.closest('tr').dataset.asgId);
-          showAssignmentModal(evSel.value, JSON.parse(campSel.dataset.camps || '[]'), a, reload);
-        }));
-        tableWrap.querySelectorAll('.prs-asg-del').forEach(b => b.addEventListener('click', async () => {
-          const c = await Swal.fire({ icon: 'warning', title: 'Remove assignment?', text: 'If the staff has sign-ins, it will be marked REVOKED instead of deleted.', showCancelButton: true });
-          if (!c.isConfirmed) return;
-          try {
-            await PrsApi.deleteAssignment(ctx.adminKey, b.closest('tr').dataset.asgId);
-            toast('Removed.', 'success');
-            reload();
-          } catch (e) { err(e); }
-        }));
+        paginatedTableView({
+          wrap: document.getElementById('prsAsgViewWrap'),
+          rows: rows,
+          searchPlaceholder: 'Search by staff name, phone, department, event or camp…',
+          emptyText: 'No assignments yet.',
+          searchFields: a => [
+            a.staffName, a.phone, a.department, a.eventName, a.campName, a.campState, a.status, campLabel(a),
+          ].filter(Boolean).join(' '),
+          rowAttrs: a => `data-asg-id="${esc(a.assignmentId)}"`,
+          columns: [
+            { label: 'Name',          render: a => esc(a.staffName) },
+            { label: 'Phone',         render: a => esc(a.phone) },
+            { label: 'Department',    render: a => esc(a.department) },
+            { label: 'Event',         render: a => esc(a.eventName || '') },
+            { label: 'Camp',          render: a => esc(campLabel(a)) },
+            { label: 'Required Days', render: a => esc(a.requiredDays) },
+            { label: 'Status',        render: a => `<span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span>` },
+            { label: 'Actions',       render: () => `
+                <button class="btn btn-xs btn-secondary prs-asg-edit">Edit</button>
+                <button class="btn btn-xs btn-danger prs-asg-del">Remove</button>
+              ` },
+          ],
+          onAfterRender: (tbody) => {
+            tbody.querySelectorAll('.prs-asg-edit').forEach(b => b.addEventListener('click', () => {
+              const a = rows.find(x => String(x.assignmentId) === b.closest('tr').dataset.asgId);
+              showAssignmentModal(evSel.value, JSON.parse(campSel.dataset.camps || '[]'), a, reload);
+            }));
+            tbody.querySelectorAll('.prs-asg-del').forEach(b => b.addEventListener('click', async () => {
+              const c = await Swal.fire({ icon: 'warning', title: 'Remove assignment?', text: 'If the staff has sign-ins, it will be marked REVOKED instead of deleted.', showCancelButton: true });
+              if (!c.isConfirmed) return;
+              try {
+                await PrsApi.deleteAssignment(ctx.adminKey, b.closest('tr').dataset.asgId);
+                toast('Removed.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+          },
+        });
       } catch (e) {
         tableWrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
@@ -740,6 +895,11 @@
     const dtSel = document.getElementById('prsLogDate');
     const wrap = document.getElementById('prsLogWrap');
 
+    const campLabelFor = l => l.campName
+      ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
+      : '— (camp removed)';
+    const eventLabelFor = l => l.eventName || '— (event removed)';
+
     async function reload() {
       wrap.innerHTML = '<div class="info info-muted">Loading…</div>';
       try {
@@ -749,33 +909,26 @@
           limit: 500,
         });
         const rows = (r && r.data && r.data.logs) || [];
-        wrap.innerHTML = `
-          <table class="data-table">
-            <thead>
-              <tr><th>When</th><th>Action</th><th>Staff</th><th>Phone</th><th>Camp</th><th>Event</th></tr>
-            </thead>
-            <tbody>
-              ${rows.length === 0
-                ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No logs.</td></tr>'
-                : rows.map(l => {
-                    const campLabel = l.campName
-                      ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
-                      : '— (camp removed)';
-                    const eventLabel = l.eventName || '— (event removed)';
-                    return `
-                      <tr>
-                        <td>${esc(fmtDate(l.timestamp))}</td>
-                        <td><span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span></td>
-                        <td>${esc(l.staffName || '')}</td>
-                        <td>${esc(l.phone)}</td>
-                        <td>${esc(campLabel)}</td>
-                        <td>${esc(eventLabel)}</td>
-                      </tr>
-                    `;
-                  }).join('')}
-            </tbody>
-          </table>
-        `;
+        wrap.innerHTML = '<div id="prsLogsViewWrap"></div>';
+
+        paginatedTableView({
+          wrap: document.getElementById('prsLogsViewWrap'),
+          rows: rows,
+          searchPlaceholder: 'Search by staff name, phone, camp, event or action…',
+          emptyText: 'No logs.',
+          searchFields: l => [
+            l.staffName, l.phone, l.action, l.campName, l.campState, l.eventName,
+            campLabelFor(l), eventLabelFor(l),
+          ].filter(Boolean).join(' '),
+          columns: [
+            { label: 'When',   render: l => esc(fmtDate(l.timestamp)) },
+            { label: 'Action', render: l => `<span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span>` },
+            { label: 'Staff',  render: l => esc(l.staffName || '') },
+            { label: 'Phone',  render: l => esc(l.phone) },
+            { label: 'Camp',   render: l => esc(campLabelFor(l)) },
+            { label: 'Event',  render: l => esc(eventLabelFor(l)) },
+          ],
+        });
       } catch (e) {
         wrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
