@@ -390,6 +390,31 @@
             align-items: center;
             justify-content: center;
         }
+        button.admin-rail-nav {
+            cursor: pointer;
+            font-family: inherit;
+            padding: 0;
+            transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+        }
+        button.admin-rail-nav:hover {
+            background: var(--nysc-green-mist);
+            color: var(--nysc-green-darker);
+            border-color: var(--nysc-green-accent);
+        }
+        button.admin-rail-nav:focus-visible {
+            outline: 2px solid var(--nysc-green);
+            outline-offset: 2px;
+        }
+        .admin-rail-clock {
+            text-align: center;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-top: 0.65rem;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.02em;
+            line-height: 1.35;
+        }
         .admin-rail-cal-weekdays,
         .admin-rail-cal-grid {
             display: grid;
@@ -1139,47 +1164,15 @@
                     </div>
                     <div class="admin-rail-card">
                         <div class="admin-rail-card-head">
-                            <span class="admin-rail-nav" aria-hidden="true">&#8249;</span>
-                            <span class="admin-rail-month">April 2026</span>
-                            <span class="admin-rail-nav" aria-hidden="true">&#8250;</span>
+                            <button type="button" class="admin-rail-nav" id="adminRailCalPrev" aria-label="Previous month">&#8249;</button>
+                            <span class="admin-rail-month" id="adminRailCalMonth" aria-live="polite"></span>
+                            <button type="button" class="admin-rail-nav" id="adminRailCalNext" aria-label="Next month">&#8250;</button>
                         </div>
                         <div class="admin-rail-cal-weekdays">
                             <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
                         </div>
-                        <div class="admin-rail-cal-grid">
-                            <span class="admin-rail-day is-muted"></span>
-                            <span class="admin-rail-day is-muted"></span>
-                            <span class="admin-rail-day">1</span>
-                            <span class="admin-rail-day">2</span>
-                            <span class="admin-rail-day">3</span>
-                            <span class="admin-rail-day">4</span>
-                            <span class="admin-rail-day">5</span>
-                            <span class="admin-rail-day">6</span>
-                            <span class="admin-rail-day">7</span>
-                            <span class="admin-rail-day">8</span>
-                            <span class="admin-rail-day">9</span>
-                            <span class="admin-rail-day">10</span>
-                            <span class="admin-rail-day">11</span>
-                            <span class="admin-rail-day">12</span>
-                            <span class="admin-rail-day">13</span>
-                            <span class="admin-rail-day">14</span>
-                            <span class="admin-rail-day">15</span>
-                            <span class="admin-rail-day">16</span>
-                            <span class="admin-rail-day is-today">17</span>
-                            <span class="admin-rail-day">18</span>
-                            <span class="admin-rail-day">19</span>
-                            <span class="admin-rail-day">20</span>
-                            <span class="admin-rail-day">21</span>
-                            <span class="admin-rail-day">22</span>
-                            <span class="admin-rail-day">23</span>
-                            <span class="admin-rail-day">24</span>
-                            <span class="admin-rail-day">25</span>
-                            <span class="admin-rail-day">26</span>
-                            <span class="admin-rail-day">27</span>
-                            <span class="admin-rail-day">28</span>
-                            <span class="admin-rail-day">29</span>
-                            <span class="admin-rail-day">30</span>
-                        </div>
+                        <div class="admin-rail-cal-grid" id="adminRailCalGrid" aria-label="Calendar dates"></div>
+                        <div class="admin-rail-clock" id="adminRailClock" aria-live="off"></div>
                     </div>
                     <div class="admin-rail-card">
                         <h3 class="admin-rail-heading">Online now</h3>
@@ -1221,6 +1214,7 @@
     <!-- PRS (Planning, Research & Statistics) UI helpers — loaded BEFORE ui.js
          so ui.js can delegate to window.PrsAdmin. -->
     <script src="js/prs.js"></script>
+    <script src="js/admin-rail-calendar.js"></script>
     <script src="js/ui.js"></script>
     <script>
         // Verify all modules loaded
