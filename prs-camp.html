@@ -156,7 +156,11 @@
         </div>
         <div class="prs-meta-row">
           <span class="prs-meta-label">Sign-Out</span>
-          <span class="prs-meta-value" id="todaySignOutBadge"><span class="status-badge pending">Not yet</span></span>
+          <span class="prs-meta-value" id="todaySignOutBadge"><span class="status-badge pending">—</span></span>
+        </div>
+        <div class="prs-meta-row" id="assignmentDayRow">
+          <span class="prs-meta-label">Assignment day</span>
+          <span class="prs-meta-value" id="assignmentDayValue">—</span>
         </div>
         <div class="prs-meta-row">
           <span class="prs-meta-label">Last action</span>
@@ -164,11 +168,8 @@
         </div>
       </div>
 
-      <!-- Sign-In and Sign-Out are revealed in stages:
-           1. Sign-In button is shown first (morning window).
-           2. Once signed in for the day, Sign-In hides and Sign-Out is
-              revealed (evening window from 4pm).
-           A small notice explains why an action is currently unavailable. -->
+      <!-- Camp flow: sign-in once per day for days 1..N-1 (sign-out not used).
+           On the final day (day N), sign in then sign out to complete. -->
       <div class="prs-action-row" id="actionRow">
         <button type="button" class="btn btn-primary btn-block" id="signInBtn" style="display:none;grid-column:1 / -1;">🟢 Sign In</button>
         <button type="button" class="btn btn-danger btn-block"  id="signOutBtn" style="display:none;grid-column:1 / -1;">🔴 Sign Out</button>
@@ -263,7 +264,12 @@
           assignment = d.assignment;
           const completed = Number(d.daysCompleted || 0);
           const required = Number(assignment.requiredDays || 0);
-          const remaining = Math.max(0, required - completed);
+          const remaining = d.remainingDays != null
+            ? Number(d.remainingDays)
+            : Math.max(0, required - completed);
+          const distinctIn = Number(d.distinctSignInDays || 0);
+          const finished = d.assignmentFinished === true;
+          const finalDay = d.isFinalAttendanceDay === true;
 
           document.getElementById('dashStaffName').textContent = assignment.staffName || 'Staff';
           document.getElementById('dashCampLine').textContent =
@@ -277,22 +283,38 @@
             d.todaySignedIn
               ? '<span class="status-badge ok">Signed in</span>'
               : '<span class="status-badge pending">Not yet</span>';
-          document.getElementById('todaySignOutBadge').innerHTML =
-            d.todaySignedOut
+
+          let outBadgeHtml;
+          if (!d.todaySignedIn) {
+            outBadgeHtml = '<span class="status-badge pending">—</span>';
+          } else if (finalDay) {
+            outBadgeHtml = d.todaySignedOut
               ? '<span class="status-badge ok">Signed out</span>'
-              : '<span class="status-badge pending">Not yet</span>';
+              : '<span class="status-badge pending">Required to finish</span>';
+          } else {
+            outBadgeHtml = '<span class="status-badge ok" title="Sign-out is only on your last assignment day">Not required today</span>';
+          }
+          document.getElementById('todaySignOutBadge').innerHTML = outBadgeHtml;
+
+          var dayLabel = '—';
+          if (required >= 1) {
+            if (d.todaySignedIn && finalDay) {
+              dayLabel = 'Day ' + required + ' of ' + required + ' (final — sign out to complete)';
+            } else if (d.todaySignedIn) {
+              dayLabel = 'Day ' + distinctIn + ' of ' + required + ' (sign-in only; not the final day)';
+            } else if (distinctIn < required) {
+              dayLabel = 'Next sign-in will be day ' + (distinctIn + 1) + ' of ' + required;
+            } else {
+              dayLabel = required + ' day assignment';
+            }
+          }
+          document.getElementById('assignmentDayValue').textContent = dayLabel;
 
           const la = d.lastAction;
           document.getElementById('lastActionValue').textContent = la
             ? (la.action.replace('_', ' ') + ' · ' + new Date(la.timestamp).toLocaleString())
             : '—';
 
-          // ---- Staged action visibility ----
-          // Rules (time-agnostic):
-          //   * Sign-In:  shown only when the staff has NOT yet signed in today.
-          //   * Sign-Out: shown only AFTER today's sign-in is recorded AND
-          //               sign-out has not yet been recorded today.
-          //   * Once both are done, both buttons are hidden.
           const signInBtnEl  = document.getElementById('signInBtn');
           const signOutBtnEl = document.getElementById('signOutBtn');
           const noticeEl     = document.getElementById('actionNotice');
@@ -303,14 +325,24 @@
           signOutBtnEl.disabled = false;
           let notice = '';
 
-          if (!d.todaySignedIn) {
+          if (finished) {
+            notice = 'You have completed this camp assignment. Thank you.';
+          } else if (!d.todaySignedIn && distinctIn < required) {
             signInBtnEl.style.display = 'block';
-            notice = 'Sign in to start your day. Sign-out will appear once you are signed in.';
-          } else if (!d.todaySignedOut) {
+            if (required === 1) {
+              notice = 'Sign in, then sign out when you leave to complete your 1-day assignment.';
+            } else {
+              notice = 'Sign in once today. For days 1–' + (required - 1) + ', only sign-in is needed. On day ' + required + ' (final day), sign in then sign out to complete.';
+            }
+          } else if (d.todaySignedIn && finalDay && !d.todaySignedOut) {
             signOutBtnEl.style.display = 'block';
-            notice = 'You are signed in. Tap Sign Out when you are done for the day.';
+            notice = 'Final day: tap Sign Out when you leave camp to complete your assignment.';
+          } else if (d.todaySignedIn && !finalDay) {
+            notice = 'You are signed in for today. Sign-out is only required on your final assignment day (day ' + required + ').';
+          } else if (!d.todaySignedIn && distinctIn >= required) {
+            notice = 'All required sign-in days are recorded. If your final day is incomplete, complete sign-out on that day via your admin if needed.';
           } else {
-            notice = "You have completed today's attendance. See you tomorrow.";
+            notice = "Today's attendance is complete. See you on the next assignment day.";
           }
           noticeEl.textContent = notice;
 
