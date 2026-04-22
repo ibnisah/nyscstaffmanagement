@@ -312,7 +312,7 @@
 
           const la = d.lastAction;
           document.getElementById('lastActionValue').textContent = la
-            ? (la.action.replace('_', ' ') + ' · ' + new Date(la.timestamp).toLocaleString())
+            ? (la.action.replace('_', ' ') + ' · ' + Prs.formatDateTime(la.timestamp))
             : '—';
 
           const signInBtnEl  = document.getElementById('signInBtn');

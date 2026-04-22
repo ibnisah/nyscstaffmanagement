@@ -92,7 +92,7 @@
     signOut:           (body) => call('prsSignOut',           body),
   };
 
-  global.Prs = { Api: PrsApi, Staff: PrsStaff };
+  global.Prs = { Api: PrsApi, Staff: PrsStaff, formatDateTime: fmtDate };
 
   // ---------------------------------------------------------------------------
   // 2. ADMIN UI — renders into the #prsWorkspace in admin.html
@@ -114,11 +114,22 @@
       .replace(/'/g, '&#39;');
   }
 
+  /** 12-hour clock for all PRS date+time display (admin + staff UI). */
+  const PRS_DATETIME_OPTS = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  };
+
   function fmtDate(v) {
     if (!v) return '';
     const d = v instanceof Date ? v : new Date(v);
     if (isNaN(d.getTime())) return esc(v);
-    return d.toLocaleString();
+    return d.toLocaleString(undefined, PRS_DATETIME_OPTS);
   }
 
   function fmtDateOnly(v) {
