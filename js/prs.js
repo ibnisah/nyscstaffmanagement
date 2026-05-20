@@ -70,6 +70,10 @@
     listAssignments:  (key, eventId, campId) => call('prsListAssignments', {
       key, eventId, campId: campId || ''
     }),
+    downloadAssignmentsExcel: (key, eventId) => call('prsDownloadAssignmentsExcel', {
+      key,
+      eventId,
+    }),
 
     // ---- Dashboard ----
     getDashboardStats: (key) => call('prsGetDashboardStats', { key }),
@@ -314,6 +318,26 @@
     } else {
       alert(msg);
     }
+  }
+
+  function downloadBase64File(base64, fileName, mimeType) {
+    if (!base64) throw new Error('Empty file payload.');
+    const byteChars = atob(base64);
+    const byteArrays = [];
+    const sliceSize = 1024;
+    for (let offset = 0; offset < byteChars.length; offset += sliceSize) {
+      const slice = byteChars.slice(offset, offset + sliceSize);
+      const bytes = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) bytes[i] = slice.charCodeAt(i);
+      byteArrays.push(new Uint8Array(bytes));
+    }
+    const blob = new Blob(byteArrays, { type: mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'download';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
   // ---- Action bar (contextual tabs) ----
@@ -730,6 +754,7 @@
             <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Camp (optional)</label>
             <select id="prsAsgCamp" class="swal2-select" style="width:100%;padding:0.5rem;"><option value="">All camps</option></select>
           </div>
+          <button class="btn btn-secondary" id="prsAsgDownloadBtn">⬇ Download Records (Excel)</button>
           <button class="btn btn-primary" id="prsAsgAddBtn">➕ Assign Staff</button>
         </div>
         <div class="table-wrapper" id="prsAsgTableWrap"></div>
@@ -818,6 +843,31 @@
       const camps = JSON.parse(campSel.dataset.camps || '[]');
       if (camps.length === 0) return toast('No camps in this event — add one first.', 'info');
       showAssignmentModal(evSel.value, camps, null, reload);
+    });
+    document.getElementById('prsAsgDownloadBtn').addEventListener('click', async () => {
+      try {
+        const eventId = evSel.value;
+        if (!eventId) return toast('Please select an event first.', 'info');
+        const res = await PrsApi.downloadAssignmentsExcel(ctx.adminKey, eventId);
+        const data = (res && res.data) || {};
+        if (data.fileBase64) {
+          downloadBase64File(
+            data.fileBase64,
+            data.fileName || 'prs_assignments.xlsx',
+            data.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
+        } else if (data.downloadUrl) {
+          const a = document.createElement('a');
+          a.href = data.downloadUrl;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.download = data.fileName || 'prs_assignments.xlsx';
+          a.click();
+        } else {
+          throw new Error('Could not generate spreadsheet for download.');
+        }
+        toast('Spreadsheet generated. Download starting…', 'success');
+      } catch (e) { err(e); }
     });
 
     await refreshCampSel();

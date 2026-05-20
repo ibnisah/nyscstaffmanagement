@@ -5021,6 +5021,26 @@ const AdminPage = (function () {
     }
   }
 
+  function downloadBase64File(base64, fileName, mimeType) {
+    if (!base64) throw new Error('Empty file payload.');
+    const byteChars = atob(base64);
+    const byteArrays = [];
+    const sliceSize = 1024;
+    for (let offset = 0; offset < byteChars.length; offset += sliceSize) {
+      const slice = byteChars.slice(offset, offset + sliceSize);
+      const bytes = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) bytes[i] = slice.charCodeAt(i);
+      byteArrays.push(new Uint8Array(bytes));
+    }
+    const blob = new Blob(byteArrays, { type: mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName || 'download';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
   /**
    * Resize and compress an image file for profile photo (canvas-based, no external libs).
    * Max 400x400, aspect ratio preserved; output JPEG 0.8 quality as Blob then base64 data URL.
@@ -5205,6 +5225,7 @@ const AdminPage = (function () {
       const canEdit = (isHrmAdminActionRole(adminRole) && adminRole !== 'HRM_ADMIN_3') || adminRole === 'SUPER_ADMIN';
       const canArchive = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1' || adminRole === 'HRM_ADMIN_2';
       const canRemoveReplaceDoc = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1';
+      const canDownloadStaffDocsPdf = adminRole === 'SUPER_ADMIN' || adminRole === 'HRM_ADMIN_1';
 
       const SERVICE_RECORD_TAB_CONFIG = {
         appointments: {
@@ -5378,6 +5399,7 @@ const AdminPage = (function () {
                 ${adminRole === 'SUPER_ADMIN' ? `<button id="generateUploadLinkBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Generate Upload Link</button>` : ''}
                 ${canEdit ? `<button id="uploadFullPhotoBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Upload/Replace Full Photo</button>` : ''}
                 ${canEdit ? `<button id="uploadDocBtn" class="btn btn-primary" style="padding: 0.75rem 2rem;">Upload Document</button>` : ''}
+                ${canDownloadStaffDocsPdf ? `<button id="downloadStaffDocsPdfBtn" class="btn btn-secondary" style="padding: 0.75rem 2rem;">Download Documents (PDF)</button>` : ''}
                 ${canArchive ? `<button id="archiveStaffBtn" class="btn ${staff.status === 'ACTIVE' ? 'btn-danger' : 'btn-success'}" style="padding: 0.75rem 2rem; ${staff.status === 'ACTIVE' ? 'background-color: #dc2626; color: #fff; border-color: #dc2626;' : ''}">${staff.status === 'ACTIVE' ? 'Archive Record' : 'Restore Record'}</button>` : ''}
                 ${adminRole === 'SUPER_ADMIN' ? `<button id="deleteStaffCompletelyBtn" class="btn btn-danger" style="padding: 0.75rem 2rem; background-color: #991b1b; color: #fff; border-color: #991b1b;" title="Permanently delete this record and all documents; invite status becomes Pending so they can re-register">Delete Completely</button>` : ''}
               </div>
@@ -5598,6 +5620,7 @@ const AdminPage = (function () {
           const archiveBtn = document.getElementById('archiveStaffBtn');
           const deleteCompletelyBtn = document.getElementById('deleteStaffCompletelyBtn');
           const uploadDocBtn = document.getElementById('uploadDocBtn');
+          const downloadStaffDocsPdfBtn = document.getElementById('downloadStaffDocsPdfBtn');
           const viewDocsBtn = document.getElementById('viewDocsBtn');
           const viewRecordOfServiceBtn = document.getElementById('viewRecordOfServiceBtn');
 
@@ -5665,6 +5688,42 @@ const AdminPage = (function () {
               // Clear docs cache so the Documents section reflects latest uploads.
               try { if (window.staffDocCache) delete window.staffDocCache[cacheKey]; } catch (e) {}
               if (window.currentStaffRecord) renderStaffDetail(window.currentStaffRecord);
+            });
+          }
+
+          if (downloadStaffDocsPdfBtn && canDownloadStaffDocsPdf) {
+            downloadStaffDocsPdfBtn.addEventListener('click', async () => {
+              try {
+                UI.showLoading('Preparing PDF', 'Compiling staff documents...');
+                const res = await Api.call('downloadStaffDocumentsPdf', {
+                  key: adminKey,
+                  employeeId: employeeId,
+                  formationId: staff.formationId || currentFormationId || '',
+                  systemRecordID: staff.systemRecordID || ''
+                });
+                UI.closeLoading();
+                const data = (res && res.data) || {};
+                if (data.fileBase64) {
+                  downloadBase64File(
+                    data.fileBase64,
+                    data.fileName || ('staff_documents_' + employeeId + '.pdf'),
+                    data.mimeType || 'application/pdf'
+                  );
+                } else if (data.downloadUrl) {
+                  const a = document.createElement('a');
+                  a.href = data.downloadUrl;
+                  a.target = '_blank';
+                  a.rel = 'noopener';
+                  a.download = data.fileName || ('staff_documents_' + employeeId + '.pdf');
+                  a.click();
+                } else {
+                  throw new Error((res && res.message) || 'Failed to create documents PDF.');
+                }
+                await UI.showSuccess('Download started', `PDF generated with ${data.totalDocuments || 0} document(s).`);
+              } catch (pdfErr) {
+                UI.closeLoading();
+                await UI.showError('Export failed', pdfErr && pdfErr.message ? pdfErr.message : 'Could not generate documents PDF.');
+              }
             });
           }
 
