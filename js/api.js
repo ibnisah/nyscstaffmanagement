@@ -167,3 +167,79 @@ const Api = (function () {
   };
 })();
 
+/**
+ * Scroll every page/view to the top on open. Stops the browser from restoring
+ * a previous scroll position when switching modules, tabs, or steps.
+ */
+const ScrollTop = (function () {
+  'use strict';
+
+  if (typeof history !== 'undefined' && 'scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
+
+  function scrollRoots() {
+    var seen = new Set();
+    function reset(el) {
+      if (!el || seen.has(el)) return;
+      seen.add(el);
+      el.scrollTop = 0;
+      el.scrollLeft = 0;
+    }
+    [
+      document.documentElement,
+      document.body,
+      document.querySelector('main'),
+      document.querySelector('.page'),
+      document.querySelector('.page-admin'),
+      document.querySelector('.admin-layout'),
+      document.querySelector('.admin-main-column'),
+      document.querySelector('.admin-main-panel'),
+      document.querySelector('.admin-workspace'),
+      document.getElementById('moduleSelector'),
+    ].forEach(reset);
+    document.querySelectorAll('.workspace-content, [id$="Content"]').forEach(reset);
+  }
+
+  function toTop(options) {
+    options = options || {};
+    var behavior = options.behavior || 'auto';
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: behavior });
+    } catch (e) {
+      window.scrollTo(0, 0);
+    }
+    scrollRoots();
+  }
+
+  /** Call after async UI renders so layout shifts don't leave the page mid-scroll. */
+  function afterRender(callback) {
+    toTop({ behavior: 'auto' });
+    requestAnimationFrame(function () {
+      toTop({ behavior: 'auto' });
+      requestAnimationFrame(function () {
+        toTop({ behavior: 'auto' });
+        setTimeout(function () {
+          toTop({ behavior: 'auto' });
+          if (typeof callback === 'function') callback();
+        }, 50);
+      });
+    });
+  }
+
+  if (typeof document !== 'undefined') {
+    var boot = function () { afterRender(); };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot);
+    } else {
+      boot();
+    }
+    window.addEventListener('pageshow', function (ev) {
+      if (ev.persisted) afterRender();
+    });
+    window.addEventListener('load', function () { afterRender(); });
+  }
+
+  return { toTop: toTop, afterRender: afterRender };
+})();
+

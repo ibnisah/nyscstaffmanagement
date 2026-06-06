@@ -153,6 +153,7 @@ const AttendancePage = (function () {
   async function handleStart() {
     UI.hide('pre-location-warning');
     UI.show('attendance-form');
+    if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
   }
 
   async function handleSubmit(e) {
@@ -703,6 +704,7 @@ const AdminPage = (function () {
       const adminKeyInput = document.getElementById('adminKey');
       if (adminKeyInput) adminKeyInput.value = '';
     }
+    if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
 
     // Show success message
     UI.showSuccess('Logged Out', 'You have been successfully logged out.', 2000);
@@ -831,6 +833,7 @@ const AdminPage = (function () {
 
       // Close loading spinner
       UI.closeLoading();
+      if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
     } catch (err) {
       UI.closeLoading();
       console.error('Admin login error:', err);
@@ -4617,10 +4620,7 @@ const AdminPage = (function () {
       paginationEl.innerHTML = '';
     }
     if (container) {
-      container.scrollTop = 0;
-      if (container.scrollIntoView) {
-        container.scrollIntoView({ block: 'start', behavior: 'instant' });
-      }
+      if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
     }
   }
 
@@ -7560,6 +7560,7 @@ const AdminPage = (function () {
 
   function showModuleSelector() {
     console.log('showModuleSelector called');
+    if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
     const moduleSelector = document.getElementById('moduleSelector');
     const adminLayout = document.getElementById('adminLayout');
     const adminSidebar = document.getElementById('adminSidebar');
@@ -7587,6 +7588,7 @@ const AdminPage = (function () {
   }
 
   function openModule(module) {
+    if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
     currentModule = module;
 
     // Hide module selector, show admin layout
@@ -7917,6 +7919,7 @@ const AdminPage = (function () {
   }
 
   async function loadModuleView(module, view) {
+    if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
     const contentId = `${module}Content`;
     const content = document.getElementById(contentId);
     if (!content) return;
@@ -7957,6 +7960,8 @@ const AdminPage = (function () {
     } catch (err) {
       console.error(`Error loading ${module} view ${view}:`, err);
       content.innerHTML = `<div class="info info-error">Error loading view: ${err.message}</div>`;
+    } finally {
+      if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
     }
   }
 

@@ -19,6 +19,37 @@
   <style>
     .prs-step { display: none; }
     .prs-step.active { display: block; }
+    .prs-asg-card {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      padding: 0.9rem 1rem;
+      border: 1px solid var(--border-soft, #e5e7eb);
+      border-radius: var(--radius, 8px);
+      background: #fff;
+      cursor: pointer;
+      transition: transform 0.06s ease, box-shadow 0.12s ease;
+    }
+    .prs-asg-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.08)); }
+    .prs-asg-card .asg-title { font-weight: 700; color: var(--ink, #111827); }
+    .prs-asg-card .asg-meta  { font-size: 0.82rem; color: var(--text-muted, #6b7280); }
+    .prs-asg-list  { display: grid; gap: 0.65rem; margin-top: 0.75rem; }
+
+    .prs-mat-card {
+      border: 1px solid var(--border-soft, #e5e7eb);
+      border-radius: var(--radius, 8px);
+      padding: 0.85rem 1rem;
+      background: #fff;
+      margin-bottom: 0.65rem;
+    }
+    .prs-mat-card .mat-title { font-weight: 700; }
+    .prs-mat-card .mat-desc  { font-size: 0.85rem; color: var(--text-muted, #6b7280); margin: 0.25rem 0; }
+    .prs-mat-card .mat-foot  { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .prs-mat-card .mat-status { font-size: 0.78rem; color: var(--text-muted, #6b7280); }
+    .prs-mat-card .mat-locked { opacity: 0.7; }
+    .prs-mat-card .badge-locked { background: #fef3c7; color: #92400e; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; }
+    .prs-mat-card .badge-open   { background: #d1fae5; color: #065f46; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.72rem; }
+
     .prs-mini-dashboard {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -137,6 +168,19 @@
       <div id="phoneStatus" class="status" style="margin-top: 1rem;"></div>
     </section>
 
+    <!-- STEP 1b: Assignment picker (only when staff has more than one) -->
+    <section class="card prs-step" id="stepPickAssignment">
+      <h1>Pick your assignment</h1>
+      <p class="subtitle">
+        You are on the roster for several activities at this camp. Tap the one
+        you are attending right now.
+      </p>
+      <div class="prs-asg-list" id="assignmentList"></div>
+      <button type="button" class="btn btn-secondary btn-block" id="changePhoneBtn" style="margin-top:1rem;">
+        ← Use a different phone number
+      </button>
+    </section>
+
     <!-- STEP 2: Mini dashboard + actions -->
     <section class="card prs-step" id="stepDashboard">
       <h1 id="dashStaffName">Staff</h1>
@@ -178,6 +222,21 @@
         Your GPS must be within the camp radius. Location is captured on tap.
       </p>
       <div id="dashStatus" class="status" style="margin-top: 1rem;"></div>
+
+      <!-- Materials panel: only shown when the resolved activity has materials.
+           Each item is annotated by the backend with `eligible:true|false` so
+           the staff sees exactly which files they can claim and which are
+           still locked (and why). -->
+      <div id="materialsSection" style="display:none;margin-top:1.5rem;">
+        <h3 style="margin: 0 0 0.5rem 0;">Materials</h3>
+        <p class="subtitle" style="margin-top:0;">Files released to you for this assignment.</p>
+        <div id="materialsList"></div>
+      </div>
+
+      <button type="button" class="btn btn-secondary btn-block" id="switchAssignmentBtn"
+              style="display:none;margin-top:1rem;">
+        🔄 Switch assignment
+      </button>
     </section>
 
   </main>
@@ -197,6 +256,7 @@
         document.querySelectorAll('.prs-step').forEach(s => s.classList.remove('active'));
         const el = document.getElementById(id);
         if (el) el.classList.add('active');
+        if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
       }
       function setStatus(id, msg, type) {
         const el = document.getElementById(id);
@@ -227,10 +287,42 @@
       }
 
       // Kept between steps
-      let campInfo = null;    // { campId, campName, state, latitude, longitude, radiusMeters }
-      let eventInfo = null;   // { eventId, eventName, status, startDate, endDate }
-      let assignment = null;  // { assignmentId, staffName, department, requiredDays, ... }
-      let currentPhone = '';  // normalized input phone
+      let campInfo = null;     // { campId, campName, state, latitude, longitude, radiusMeters }
+      let eventInfo = null;    // { eventId, eventName, status, startDate, endDate }
+      let assignment = null;   // { assignmentId, staffName, department, requiredDays, attendanceMode, assignmentDefId, ... }
+      let currentPhone = '';   // normalized input phone
+      let chosenAssignmentId = ''; // explicit pick after the picker step
+
+      function escHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function prsReleaseRuleLabel(rule, mat) {
+        switch (String(rule || '').toUpperCase()) {
+          case 'IMMEDIATE':        return 'Released immediately';
+          case 'ON_SIGN_IN':       return 'Released after you sign in today';
+          case 'ON_SIGN_IN_DAY_N': return 'Released after sign-in day ' + (Number(mat && mat.releaseAfterSignInDay) || 1);
+          case 'ON_DATE':          return 'Released on ' + (mat && mat.releaseDate ? Prs.formatDateTime(mat.releaseDate) : 'a set date');
+          case 'MANUAL':           return 'Released manually by admin';
+          default: return 'Release rule: ' + String(rule || '');
+        }
+      }
+
+      function eligibilityMessage(code) {
+        const c = String(code || '').toUpperCase();
+        const map = {
+          NOT_RELEASED: 'Awaiting admin release',
+          AWAITING_RELEASE_DATE: 'Awaiting scheduled release date',
+          SIGN_IN_REQUIRED: 'Sign in today to unlock',
+          SIGN_IN_DAY_REQUIRED: 'Reach the required sign-in day to unlock',
+          NOT_ELIGIBLE: 'Not yet available',
+          ELIGIBLE: 'Available',
+          OK: 'Available',
+        };
+        return map[c] || (code ? String(code).replace(/_/g, ' ') : '');
+      }
 
       // ---- Step 1: validate QR ----
       async function validate() {
@@ -255,13 +347,67 @@
         }
       }
 
-      // ---- Step 2: phone resolution + mini dashboard ----
-      async function resolvePhoneAndShowDashboard(phone) {
+      // ---- Step 1.5: list assignments for this phone at this camp. If exactly
+      // one is found we proceed straight to the dashboard; otherwise we show
+      // the picker. ----
+      async function lookupPhone(phone) {
         try {
           setStatus('phoneStatus', 'Looking up your assignment…');
-          const res = await Prs.Staff.getStaffDashboard({ eventId, campId, token, phone });
+          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone });
+          const list = (res && res.data && res.data.assignments) || [];
+          if (!list.length) {
+            setStatus('phoneStatus', 'This phone number is not assigned to any activity at this camp.', 'error');
+            return;
+          }
+          if (list.length === 1) {
+            chosenAssignmentId = list[0].assignmentId;
+            setStatus('phoneStatus', '');
+            resolvePhoneAndShowDashboard(phone, chosenAssignmentId);
+            return;
+          }
+          renderAssignmentPicker(list);
+          setStatus('phoneStatus', '');
+          showStep('stepPickAssignment');
+        } catch (e) {
+          setStatus('phoneStatus', (e && e.message) || 'Could not look up your assignments.', 'error');
+        }
+      }
+
+      function renderAssignmentPicker(list) {
+        const host = document.getElementById('assignmentList');
+        host.innerHTML = list.map(function (a) {
+          const meta = [
+            a.department || '',
+            a.requiredDays ? (a.requiredDays + ' day' + (a.requiredDays > 1 ? 's' : '')) : '',
+            a.attendanceMode && a.attendanceMode !== 'STANDARD' ? a.attendanceMode.replace(/_/g, ' ') : '',
+          ].filter(Boolean).join(' • ');
+          return (
+            '<div class="prs-asg-card" data-asg="' + escHtml(a.assignmentId) + '">' +
+              '<div class="asg-title">' + escHtml(a.title || 'Activity') + '</div>' +
+              (meta ? '<div class="asg-meta">' + escHtml(meta) + '</div>' : '') +
+            '</div>'
+          );
+        }).join('');
+        Array.from(host.querySelectorAll('.prs-asg-card')).forEach(function (el) {
+          el.addEventListener('click', function () {
+            const asgId = el.getAttribute('data-asg');
+            chosenAssignmentId = asgId;
+            resolvePhoneAndShowDashboard(currentPhone, asgId);
+          });
+        });
+      }
+
+      // ---- Step 2: phone resolution + mini dashboard ----
+      async function resolvePhoneAndShowDashboard(phone, assignmentId) {
+        try {
+          setStatus('phoneStatus', 'Loading your dashboard…');
+          const res = await Prs.Staff.getStaffDashboard({
+            eventId, campId, token, phone,
+            assignmentId: assignmentId || chosenAssignmentId || '',
+          });
           const d = (res && res.data) || {};
           assignment = d.assignment;
+          if (assignment && assignment.assignmentId) chosenAssignmentId = assignment.assignmentId;
           const completed = Number(d.daysCompleted || 0);
           const required = Number(assignment.requiredDays || 0);
           const remaining = d.remainingDays != null
@@ -272,9 +418,18 @@
           const finalDay = d.isFinalAttendanceDay === true;
 
           document.getElementById('dashStaffName').textContent = assignment.staffName || 'Staff';
-          document.getElementById('dashCampLine').textContent =
-            (campInfo.campName || 'Camp') + ' (' + (campInfo.state || '') + ')' +
-            (assignment.department ? ' • ' + assignment.department : '');
+          const asgTitle = assignment.assignmentTitle || assignment.title || 'Assignment';
+          const modeLabel = assignment.attendanceMode && assignment.attendanceMode !== 'STANDARD'
+            ? ' • ' + assignment.attendanceMode.replace(/_/g, ' ')
+            : '';
+          document.getElementById('dashCampLine').innerHTML =
+            '<strong>' + escHtml(asgTitle) + '</strong>' +
+            '<br />' + escHtml(campInfo.campName || 'Camp') +
+            ' (' + escHtml(campInfo.state || '') + ')' +
+            (assignment.department ? ' • ' + escHtml(assignment.department) : '') +
+            escHtml(modeLabel);
+
+          const isSignInOnly = String(assignment.attendanceMode || '').toUpperCase() === 'SIGN_IN_ONLY';
           document.getElementById('statRequired').textContent = required;
           document.getElementById('statCompleted').textContent = completed;
           document.getElementById('statRemaining').textContent = remaining;
@@ -285,7 +440,9 @@
               : '<span class="status-badge pending">Not yet</span>';
 
           let outBadgeHtml;
-          if (!d.todaySignedIn) {
+          if (isSignInOnly) {
+            outBadgeHtml = '<span class="status-badge ok" title="This activity is sign-in only">Not used</span>';
+          } else if (!d.todaySignedIn) {
             outBadgeHtml = '<span class="status-badge pending">—</span>';
           } else if (finalDay) {
             outBadgeHtml = d.todaySignedOut
@@ -325,7 +482,18 @@
           signOutBtnEl.disabled = false;
           let notice = '';
 
-          if (finished) {
+          if (isSignInOnly) {
+            // Sign-in-only mode: never show a sign-out button. Each sign-in
+            // counts toward RequiredDays.
+            if (finished) {
+              notice = 'You have completed this sign-in only activity. Thank you.';
+            } else if (!d.todaySignedIn) {
+              signInBtnEl.style.display = 'block';
+              notice = 'Sign in to log your attendance for today. (No sign-out is required for this activity.)';
+            } else {
+              notice = 'You are signed in for today. No sign-out is required for this activity.';
+            }
+          } else if (finished) {
             notice = 'You have completed this camp assignment. Thank you.';
           } else if (!d.todaySignedIn && distinctIn < required) {
             signInBtnEl.style.display = 'block';
@@ -348,8 +516,107 @@
 
           setStatus('phoneStatus', '');
           showStep('stepDashboard');
+
+          // Refresh the materials list (best-effort; failures stay silent on
+          // the dashboard so they never block sign-in).
+          loadMaterials().catch(function () { /* noop */ });
+          // Toggle the "Switch assignment" button visibility based on whether
+          // the phone has more than one assignment on this camp.
+          refreshSwitchAssignmentVisibility(phone).catch(function () { /* noop */ });
         } catch (e) {
           setStatus('phoneStatus', (e && e.message) || 'Could not match your assignment.', 'error');
+        }
+      }
+
+      async function refreshSwitchAssignmentVisibility(phone) {
+        const btn = document.getElementById('switchAssignmentBtn');
+        if (!btn) return;
+        try {
+          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone });
+          const list = (res && res.data && res.data.assignments) || [];
+          btn.style.display = list.length > 1 ? 'block' : 'none';
+        } catch (e) {
+          btn.style.display = 'none';
+        }
+      }
+
+      // ---- Materials ----
+      async function loadMaterials() {
+        const section = document.getElementById('materialsSection');
+        const host = document.getElementById('materialsList');
+        if (!assignment || !assignment.assignmentDefId) {
+          section.style.display = 'none';
+          host.innerHTML = '';
+          return;
+        }
+        try {
+          const res = await Prs.Staff.listStaffMaterials({
+            eventId, campId, token,
+            phone: currentPhone,
+            assignmentId: assignment.assignmentId,
+          });
+          const mats = (res && res.data && res.data.materials) || [];
+          if (!mats.length) {
+            section.style.display = 'none';
+            host.innerHTML = '';
+            return;
+          }
+          section.style.display = 'block';
+          host.innerHTML = mats.map(function (m) {
+            const eligible = m.eligible === true;
+            const badge = eligible
+              ? '<span class="badge-open">Available</span>'
+              : '<span class="badge-locked">Locked</span>';
+            const status = eligible
+              ? prsReleaseRuleLabel(m.releaseRule, m)
+              : (eligibilityMessage(m.eligibilityReason) || prsReleaseRuleLabel(m.releaseRule, m));
+            const action = eligible
+              ? '<button type="button" class="btn btn-sm btn-primary" data-mat="' + escHtml(m.materialId) + '" data-url="' + escHtml(m.fileUrl) + '">Download</button>'
+              : '<button type="button" class="btn btn-sm btn-secondary" disabled>Locked</button>';
+            return (
+              '<div class="prs-mat-card ' + (eligible ? '' : 'mat-locked') + '">' +
+                '<div class="mat-title">' + escHtml(m.title || 'Material') + ' ' + badge + '</div>' +
+                (m.description ? '<div class="mat-desc">' + escHtml(m.description) + '</div>' : '') +
+                '<div class="mat-foot">' +
+                  '<span class="mat-status">' + escHtml(status) + '</span>' +
+                  action +
+                '</div>' +
+              '</div>'
+            );
+          }).join('');
+          Array.from(host.querySelectorAll('button[data-mat]')).forEach(function (btn) {
+            btn.addEventListener('click', function () { downloadMaterial(btn); });
+          });
+        } catch (e) {
+          section.style.display = 'none';
+        }
+      }
+
+      async function downloadMaterial(btn) {
+        const materialId = btn.getAttribute('data-mat');
+        const url = btn.getAttribute('data-url');
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Preparing…';
+        try {
+          await Prs.Staff.logMaterialDownload({
+            eventId, campId, token,
+            phone: currentPhone,
+            assignmentId: assignment.assignmentId,
+            materialId: materialId,
+            channel: 'QR_PAGE',
+          });
+          if (url) {
+            // Open in a new tab so we don't unload the staff's dashboard.
+            window.open(url, '_blank', 'noopener');
+          } else {
+            Swal.fire({ icon: 'info', title: 'No download URL', text: 'This material has no URL configured. Please contact the admin.' });
+          }
+        } catch (e) {
+          Swal.fire({ icon: 'error', title: 'Download blocked', text: (e && e.message) || 'Could not record this download.' });
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
         }
       }
 
@@ -370,6 +637,7 @@
           const payload = {
             eventId, campId, token,
             phone: currentPhone,
+            assignmentId: chosenAssignmentId || (assignment && assignment.assignmentId) || '',
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy || null,
@@ -385,8 +653,7 @@
             timer: 2500, showConfirmButton: false,
           });
           setStatus('dashStatus', '');
-          // Refresh dashboard to reflect new state
-          await resolvePhoneAndShowDashboard(currentPhone);
+          await resolvePhoneAndShowDashboard(currentPhone, chosenAssignmentId);
         } catch (e) {
           setStatus('dashStatus', (e && e.message) || 'Failed to record attendance.', 'error');
           btn.textContent = originalText;
@@ -400,11 +667,44 @@
         const phone = document.getElementById('phoneInput').value.trim();
         if (!phone) return;
         currentPhone = phone;
-        resolvePhoneAndShowDashboard(phone);
+        chosenAssignmentId = '';
+        lookupPhone(phone);
       });
 
       document.getElementById('signInBtn').addEventListener('click',  () => performAttendance('SIGN_IN'));
       document.getElementById('signOutBtn').addEventListener('click', () => performAttendance('SIGN_OUT'));
+
+      // Reset back to the phone prompt.
+      document.getElementById('changePhoneBtn')?.addEventListener('click', function () {
+        currentPhone = '';
+        chosenAssignmentId = '';
+        assignment = null;
+        document.getElementById('phoneInput').value = '';
+        setStatus('phoneStatus', '');
+        showStep('stepPhone');
+      });
+
+      // From the dashboard, jump back to the picker (the button only renders
+      // when more than one assignment was found for this phone).
+      document.getElementById('switchAssignmentBtn')?.addEventListener('click', async function () {
+        if (!currentPhone) {
+          showStep('stepPhone');
+          return;
+        }
+        try {
+          setStatus('phoneStatus', '');
+          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone: currentPhone });
+          const list = (res && res.data && res.data.assignments) || [];
+          if (list.length <= 1) {
+            Swal.fire({ icon: 'info', title: 'Only one assignment', text: 'You only have one assignment at this camp.' });
+            return;
+          }
+          renderAssignmentPicker(list);
+          showStep('stepPickAssignment');
+        } catch (e) {
+          Swal.fire({ icon: 'error', title: 'Could not load', text: (e && e.message) || 'Failed to fetch your assignments.' });
+        }
+      });
 
       document.getElementById('navbarToggle')?.addEventListener('click', function () {
         const navbar = document.querySelector('.navbar-links');

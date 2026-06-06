@@ -63,7 +63,38 @@
       baseUrl: currentFrontendBaseUrl(),
     }),
 
-    // ---- Assignments ----
+    // ---- v2: Assignment Definitions ----
+    createAssignmentDef:    (key, body) => call('prsCreateAssignmentDef',    Object.assign({ key }, body)),
+    updateAssignmentDef:    (key, body) => call('prsUpdateAssignmentDef',    Object.assign({ key }, body)),
+    closeAssignmentDef:     (key, assignmentDefId) => call('prsCloseAssignmentDef', { key, assignmentDefId }),
+    listAssignmentDefs:     (key, eventId, campId) => call('prsListAssignmentDefs', {
+      key, eventId, campId: campId || ''
+    }),
+    getAssignmentDef:       (key, assignmentDefId) => call('prsGetAssignmentDef', { key, assignmentDefId }),
+    linkAssignmentToCamps:  (key, assignmentDefId, campIds) => call('prsLinkAssignmentToCamps', {
+      key, assignmentDefId, campIds: campIds || [],
+    }),
+    unlinkAssignmentFromCamp: (key, assignmentDefId, campId) => call('prsUnlinkAssignmentFromCamp', {
+      key, assignmentDefId, campId,
+    }),
+    listAssignmentCamps:    (key, assignmentDefId) => call('prsListAssignmentCamps', { key, assignmentDefId }),
+
+    // ---- v2: Roster (per Assignment Definition × Camp) ----
+    addStaffToAssignment:     (key, body) => call('prsAddStaffToAssignment',     Object.assign({ key }, body)),
+    bulkAddStaffToAssignment: (key, body) => call('prsBulkAddStaffToAssignment', Object.assign({ key }, body)),
+    listAssignmentRoster:     (key, assignmentDefId, campId) => call('prsListAssignmentRoster', {
+      key, assignmentDefId, campId: campId || '',
+    }),
+
+    // ---- v2: Assignment Materials ----
+    addAssignmentMaterial:        (key, body) => call('prsAddAssignmentMaterial',    Object.assign({ key }, body)),
+    updateAssignmentMaterial:     (key, body) => call('prsUpdateAssignmentMaterial', Object.assign({ key }, body)),
+    deleteAssignmentMaterial:     (key, materialId) => call('prsDeleteAssignmentMaterial', { key, materialId }),
+    listAssignmentMaterials:      (key, assignmentDefId) => call('prsListAssignmentMaterials',  { key, assignmentDefId }),
+    releaseAssignmentMaterialNow: (key, materialId) => call('prsReleaseAssignmentMaterialNow', { key, materialId }),
+    getMaterialReleaseStats:      (key, assignmentDefId) => call('prsGetMaterialReleaseStats', { key, assignmentDefId }),
+
+    // ---- Legacy single-roster surface (kept so older code keeps working) ----
     assignStaff:      (key, body) => call('prsAssignStaff', Object.assign({ key }, body)),
     updateAssignment: (key, body) => call('prsUpdateAssignment', Object.assign({ key }, body)),
     deleteAssignment: (key, assignmentId) => call('prsDeleteAssignment', { key, assignmentId }),
@@ -81,7 +112,8 @@
     getDailySummary:   (key, body) => call('prsGetDailySummary',   Object.assign({ key }, body || {})),
 
     // ---- Admin bootstrap (SUPER_ADMIN) ----
-    initializeSheets: (key) => call('prsInitializeSheets', { key }),
+    initializeSheets:    (key) => call('prsInitializeSheets', { key }),
+    migrateLegacyRoster: (key) => call('prsMigrateLegacyRoster', { key }),
 
     // ---- SUPER_ADMIN exclusive: mark attendance on behalf of a staff ----
     adminMarkAttendance: (key, body) => call('prsAdminMarkAttendance', Object.assign({ key }, body)),
@@ -89,11 +121,14 @@
 
   // Public staff-facing (no adminKey). Used by prs-camp.html.
   const PrsStaff = {
-    validateQr:        (body) => call('prsValidateCampQr',    body),
-    resolveAssignment: (body) => call('prsResolveAssignment', body),
-    getStaffDashboard: (body) => call('prsGetStaffDashboard', body),
-    signIn:            (body) => call('prsSignIn',            body),
-    signOut:           (body) => call('prsSignOut',           body),
+    validateQr:           (body) => call('prsValidateCampQr',       body),
+    resolveAssignment:    (body) => call('prsResolveAssignment',    body),
+    listStaffAssignments: (body) => call('prsListStaffAssignments', body),
+    getStaffDashboard:    (body) => call('prsGetStaffDashboard',    body),
+    signIn:               (body) => call('prsSignIn',               body),
+    signOut:              (body) => call('prsSignOut',              body),
+    listStaffMaterials:   (body) => call('prsListStaffMaterials',   body),
+    logMaterialDownload:  (body) => call('prsLogMaterialDownload',  body),
   };
 
   global.Prs = { Api: PrsApi, Staff: PrsStaff, formatDateTime: fmtDate };
@@ -320,6 +355,87 @@
     }
   }
 
+  function isSuperAdmin_() {
+    return String(ctx.adminRole || '').trim() === 'SUPER_ADMIN';
+  }
+
+  /** True when the backend reports missing PRS v2 sheets. */
+  function isPrsSheetSetupError(e) {
+    const msg = String((e && e.message) || '');
+    const reason = String((e && e.reason) || (e && e.raw && e.raw.reason) || '');
+    return msg.indexOf('PRS_SHEET_MISSING') !== -1
+      || reason.indexOf('PRS_SHEET_MISSING') !== -1
+      || msg.indexOf('run prsInitializeSheets') !== -1;
+  }
+
+  /**
+   * Render a setup card with a one-click sheet initializer (SUPER_ADMIN only).
+   * @param {HTMLElement} container
+   * @param {string} errorMsg
+   * @param {function} [onSuccess] called after init succeeds
+   */
+  function renderPrsSetupPrompt(container, errorMsg, onSuccess) {
+    const canInit = isSuperAdmin_();
+    container.innerHTML = `
+      <section class="card card-full-width">
+        <h2>PRS setup required</h2>
+        <p class="info info-error">${esc(errorMsg)}</p>
+        <p class="info info-muted" style="margin-top:0.75rem;">
+          PRS v2 adds sheets such as <strong>PRS_Assignments</strong>, <strong>PRS_AssignmentCamps</strong>,
+          <strong>PRS_AssignmentMaterials</strong>, and <strong>PRS_MaterialReleases</strong>.
+          Initializing is <em>safe and idempotent</em> — your existing events, camps, and roster rows are kept.
+        </p>
+        ${canInit ? `
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:1rem;">
+            <button type="button" class="btn btn-primary" id="prsRunInitSheetsBtn">Initialize PRS sheets</button>
+            <button type="button" class="btn btn-secondary" id="prsRunMigrateBtn" title="After init, back-fill AssignmentDefID on legacy roster rows">Migrate legacy roster</button>
+          </div>
+        ` : `
+          <p class="info info-muted" style="margin-top:1rem;">
+            A <strong>SUPER_ADMIN</strong> must run <em>Initialize PRS sheets</em> once before Activities can load.
+          </p>
+        `}
+      </section>
+    `;
+
+    if (!canInit) return;
+
+    document.getElementById('prsRunInitSheetsBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('prsRunInitSheetsBtn');
+      btn.disabled = true;
+      btn.textContent = 'Initializing…';
+      try {
+        const res = await PrsApi.initializeSheets(ctx.adminKey);
+        const d = (res && res.data) || {};
+        const created = (d.created || []).join(', ') || 'none';
+        toast('PRS sheets ready. Created: ' + created, 'success');
+        if (typeof onSuccess === 'function') onSuccess();
+      } catch (e) {
+        err(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Initialize PRS sheets';
+      }
+    });
+
+    document.getElementById('prsRunMigrateBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('prsRunMigrateBtn');
+      btn.disabled = true;
+      btn.textContent = 'Migrating…';
+      try {
+        await PrsApi.initializeSheets(ctx.adminKey);
+        const res = await PrsApi.migrateLegacyRoster(ctx.adminKey);
+        toast((res && res.message) || 'Legacy roster migrated.', 'success');
+        if (typeof onSuccess === 'function') onSuccess();
+      } catch (e) {
+        err(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Migrate legacy roster';
+      }
+    });
+  }
+
   function downloadBase64File(base64, fileName, mimeType) {
     if (!base64) throw new Error('Empty file payload.');
     const byteChars = atob(base64);
@@ -345,9 +461,24 @@
     { view: 'dashboard',   label: 'Overview',      icon: '📊' },
     { view: 'events',      label: 'Events',        icon: '🗓️' },
     { view: 'camps',       label: 'Camps',         icon: '🏕️' },
-    { view: 'assignments', label: 'Assignments',   icon: '👥' },
+    { view: 'assignments', label: 'Activities',    icon: '🧩' },
     { view: 'logs',        label: 'Attendance',    icon: '📋' },
     { view: 'summary',     label: 'Daily Summary', icon: '📈' },
+  ];
+
+  // Whitelist of attendance modes + release rules surfaced in admin pickers.
+  // Must mirror the backend's PRS_CONFIG values exactly.
+  const PRS_ATTENDANCE_MODES = [
+    { value: 'STANDARD',       label: 'Standard — daily sign-in + sign-out on the final day' },
+    { value: 'MATERIAL_GATED', label: 'Material-gated — same as Standard, but materials are unlocked by sign-in' },
+    { value: 'SIGN_IN_ONLY',   label: 'Sign-in only — no sign-out, one sign-in per required day' },
+  ];
+  const PRS_RELEASE_RULES = [
+    { value: 'IMMEDIATE',          label: 'Immediate — released the moment staff opens the assignment' },
+    { value: 'ON_SIGN_IN',         label: 'On sign-in — released after the first qualifying sign-in' },
+    { value: 'ON_SIGN_IN_DAY_N',   label: 'On sign-in day N — released on/after the Nth distinct sign-in day' },
+    { value: 'ON_DATE',            label: 'On date — released on or after a fixed calendar date (still needs same-day sign-in)' },
+    { value: 'MANUAL',             label: 'Manual — released only when an admin clicks "Release now"' },
   ];
 
   function renderActions(container, onViewSelect) {
@@ -372,6 +503,7 @@
   // ---- View dispatcher ----
   async function renderView(view, container) {
     if (!container) return;
+    if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
     container.innerHTML = '<div class="info info-muted">Loading…</div>';
     try {
       if (view === 'dashboard')    return await renderDashboard(container);
@@ -382,7 +514,13 @@
       if (view === 'summary')      return await renderSummary(container);
       container.innerHTML = '<div class="info info-muted">Unknown view.</div>';
     } catch (e) {
+      if (isPrsSheetSetupError(e)) {
+        renderPrsSetupPrompt(container, e.message || String(e), () => renderView(view, container));
+        return;
+      }
       container.innerHTML = `<div class="info info-error">Failed: ${esc(e.message || e)}</div>`;
+    } finally {
+      if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
     }
   }
 
@@ -730,119 +868,136 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 2d. Assignments
+  // 2d. Activities (Assignment Definitions) — v2 multi-assignment workspace
   // ---------------------------------------------------------------------------
+  // Two-level UI:
+  //   Level 1: pick event → list of activities for that event (table with
+  //            badges showing # camps, # staff, # materials, mode).
+  //   Level 2: drill into a single activity → tabbed sub-workspace for
+  //            Camps, Roster, Materials.
+
+  // Per-activity navigation state. Cleared whenever the user backs out of
+  // an activity or switches events.
+  const asgNav = { selectedDefId: null };
+
   async function renderAssignments(container) {
     const evRes = await PrsApi.listEvents(ctx.adminKey, '');
     const events = (evRes && evRes.data && evRes.data.events) || [];
     if (events.length === 0) {
-      container.innerHTML = `<section class="card"><h2>Assignments</h2><p class="info info-muted">Create an event and add camps first.</p></section>`;
+      container.innerHTML = `<section class="card"><h2>Activities</h2><p class="info info-muted">Create an event and add camps first.</p></section>`;
       return;
     }
 
     container.innerHTML = `
-      <section class="card card-full-width">
-        <h2>Staff Assignments</h2>
+      <section class="card card-full-width prs-asg-list-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:1rem;">
+          <h2 style="margin:0;">Activities <span style="font-size:0.85rem;color:var(--text-muted);font-weight:400;">(per-event assignments)</span></h2>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="prsAsgDownloadBtn">⬇ Download Records (Excel)</button>
+            <button class="btn btn-primary"   id="prsAsgNewDefBtn">➕ New Activity</button>
+          </div>
+        </div>
         <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem;">
-          <div style="flex:1;min-width:200px;">
+          <div style="flex:1;min-width:220px;">
             <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Event</label>
             <select id="prsAsgEvent" class="swal2-select" style="width:100%;padding:0.5rem;">
               ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)}</option>`).join('')}
             </select>
           </div>
-          <div style="flex:1;min-width:200px;">
-            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Camp (optional)</label>
-            <select id="prsAsgCamp" class="swal2-select" style="width:100%;padding:0.5rem;"><option value="">All camps</option></select>
+          <div style="flex:1;min-width:220px;">
+            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Camp (filter, optional)</label>
+            <select id="prsAsgCampFilter" class="swal2-select" style="width:100%;padding:0.5rem;">
+              <option value="">All camps</option>
+            </select>
           </div>
-          <button class="btn btn-secondary" id="prsAsgDownloadBtn">⬇ Download Records (Excel)</button>
-          <button class="btn btn-primary" id="prsAsgAddBtn">➕ Assign Staff</button>
         </div>
-        <div class="table-wrapper" id="prsAsgTableWrap"></div>
+        <div id="prsAsgDefsList"></div>
       </section>
+      <div id="prsAsgDefDetail" class="prs-asg-detail-host" aria-live="polite"></div>
     `;
 
     const evSel = document.getElementById('prsAsgEvent');
-    const campSel = document.getElementById('prsAsgCamp');
-    const tableWrap = document.getElementById('prsAsgTableWrap');
+    const campFilter = document.getElementById('prsAsgCampFilter');
+    const listEl = document.getElementById('prsAsgDefsList');
+    const detailEl = document.getElementById('prsAsgDefDetail');
 
-    async function refreshCampSel() {
+    async function refreshCampFilter() {
       try {
         const r = await PrsApi.listCamps(ctx.adminKey, evSel.value);
         const camps = (r && r.data && r.data.camps) || [];
-        campSel.innerHTML = '<option value="">All camps</option>' +
+        campFilter.innerHTML = '<option value="">All camps</option>' +
           camps.map(c => `<option value="${esc(c.campId)}">${esc(c.campName)} — ${esc(c.state)}</option>`).join('');
-        campSel.dataset.camps = JSON.stringify(camps);
+        campFilter.dataset.camps = JSON.stringify(camps);
       } catch (e) { /* ignore */ }
     }
 
-    async function reload() {
-      tableWrap.innerHTML = '<div class="info info-muted">Loading…</div>';
+    async function reloadDefs() {
+      listEl.innerHTML = '<div class="info info-muted">Loading activities…</div>';
       try {
-        const r = await PrsApi.listAssignments(ctx.adminKey, evSel.value, campSel.value);
-        const rows = (r && r.data && r.data.assignments) || [];
-
-        // Prefer names joined server-side (a.eventName / a.campName). Fall back
-        // to the local camps dataset only if the backend didn't send a name.
-        const camps = JSON.parse(campSel.dataset.camps || '[]');
-        const campLabel = a => {
-          if (a.campName) {
-            return a.campState ? `${a.campName} (${a.campState})` : a.campName;
-          }
-          const c = camps.find(x => String(x.campId) === String(a.campId));
-          return c ? `${c.campName} (${c.state})` : '';
-        };
-
-        tableWrap.innerHTML = '<div id="prsAsgViewWrap"></div>';
-
+        const r = await PrsApi.listAssignmentDefs(ctx.adminKey, evSel.value, campFilter.value);
+        const defs = (r && r.data && r.data.assignmentDefs) || [];
+        listEl.innerHTML = '<div id="prsAsgDefsTableWrap"></div>';
         paginatedTableView({
-          wrap: document.getElementById('prsAsgViewWrap'),
-          rows: rows,
-          searchPlaceholder: 'Search by staff name, phone, department, event or camp…',
-          emptyText: 'No assignments yet.',
-          searchFields: a => [
-            a.staffName, a.phone, a.department, a.eventName, a.campName, a.campState, a.status, campLabel(a),
+          wrap: document.getElementById('prsAsgDefsTableWrap'),
+          rows: defs,
+          searchPlaceholder: 'Search activities by title, mode or camp…',
+          emptyText: 'No activities yet. Click "New Activity" to add one (e.g. "Distribution of Kits", "Verification of Foreign Credentials"…).',
+          searchFields: d => [
+            d.title, d.attendanceMode, d.status, d.description,
+            ...((d.camps || []).map(c => c.campName + ' ' + c.state)),
           ].filter(Boolean).join(' '),
-          rowAttrs: a => `data-asg-id="${esc(a.assignmentId)}"`,
+          rowAttrs: d => `data-def-id="${esc(d.assignmentDefId)}"`,
           columns: [
-            { label: 'Name',          render: a => esc(a.staffName) },
-            { label: 'Phone',         render: a => esc(a.phone) },
-            { label: 'Department',    render: a => esc(a.department) },
-            { label: 'Event',         render: a => esc(a.eventName || '') },
-            { label: 'Camp',          render: a => esc(campLabel(a)) },
-            { label: 'Required Days', render: a => esc(a.requiredDays) },
-            { label: 'Status',        render: a => `<span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span>` },
-            { label: 'Actions',       render: () => `
-                <button class="btn btn-xs btn-secondary prs-asg-edit">Edit</button>
-                <button class="btn btn-xs btn-danger prs-asg-del">Remove</button>
-              ` },
+            { label: 'Activity', render: d => `
+              <div style="font-weight:600;">${esc(d.title)}</div>
+              <div style="font-size:0.8rem;color:var(--text-muted);">${esc((d.description || '').slice(0, 80))}${(d.description || '').length > 80 ? '…' : ''}</div>
+            ` },
+            { label: 'Mode', render: d => `<span class="badge badge-info" title="${esc(d.attendanceMode)}">${esc(d.attendanceMode)}</span>` },
+            { label: 'Days',  render: d => esc(d.requiredDays) },
+            { label: 'Camps', render: d => (d.camps && d.camps.length)
+              ? d.camps.map(c => `<span class="badge badge-muted" style="margin-right:0.25rem;">${esc(c.campName || '—')}</span>`).join('')
+              : `<span class="info-muted">No camps yet</span>` },
+            { label: 'Staff',     render: d => esc(d.rosterCount) },
+            { label: 'Materials', render: d => esc(d.materialsCount) },
+            { label: 'Status', render: d => `<span class="badge badge-${String(d.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(d.status)}</span>` },
+            { label: 'Actions', render: () => `
+              <button class="btn btn-xs btn-primary prs-def-open">Open</button>
+              <button class="btn btn-xs btn-secondary prs-def-edit">Edit</button>
+              ${'' /* close lives inside the open detail view */}
+            ` },
           ],
           onAfterRender: (tbody) => {
-            tbody.querySelectorAll('.prs-asg-edit').forEach(b => b.addEventListener('click', () => {
-              const a = rows.find(x => String(x.assignmentId) === b.closest('tr').dataset.asgId);
-              showAssignmentModal(evSel.value, JSON.parse(campSel.dataset.camps || '[]'), a, reload);
+            tbody.querySelectorAll('.prs-def-open').forEach(b => b.addEventListener('click', () => {
+              const defId = b.closest('tr').dataset.defId;
+              const def = defs.find(x => String(x.assignmentDefId) === defId);
+              if (def) openAssignmentDefDetail(def, detailEl, JSON.parse(campFilter.dataset.camps || '[]'), () => reloadDefs());
             }));
-            tbody.querySelectorAll('.prs-asg-del').forEach(b => b.addEventListener('click', async () => {
-              const c = await Swal.fire({ icon: 'warning', title: 'Remove assignment?', text: 'If the staff has sign-ins, it will be marked REVOKED instead of deleted.', showCancelButton: true });
-              if (!c.isConfirmed) return;
-              try {
-                await PrsApi.deleteAssignment(ctx.adminKey, b.closest('tr').dataset.asgId);
-                toast('Removed.', 'success');
-                reload();
-              } catch (e) { err(e); }
+            tbody.querySelectorAll('.prs-def-edit').forEach(b => b.addEventListener('click', () => {
+              const defId = b.closest('tr').dataset.defId;
+              const def = defs.find(x => String(x.assignmentDefId) === defId);
+              if (def) showAssignmentDefModal(evSel.value, JSON.parse(campFilter.dataset.camps || '[]'), def, () => reloadDefs());
             }));
           },
         });
       } catch (e) {
-        tableWrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
+        if (isPrsSheetSetupError(e)) {
+          renderPrsSetupPrompt(listEl, e.message || String(e), reloadDefs);
+          return;
+        }
+        listEl.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
     }
 
-    evSel.addEventListener('change', async () => { await refreshCampSel(); reload(); });
-    campSel.addEventListener('change', reload);
-    document.getElementById('prsAsgAddBtn').addEventListener('click', async () => {
-      const camps = JSON.parse(campSel.dataset.camps || '[]');
-      if (camps.length === 0) return toast('No camps in this event — add one first.', 'info');
-      showAssignmentModal(evSel.value, camps, null, reload);
+    evSel.addEventListener('change', async () => {
+      asgNav.selectedDefId = null;
+      detailEl.innerHTML = '';
+      await refreshCampFilter();
+      reloadDefs();
+    });
+    campFilter.addEventListener('change', reloadDefs);
+    document.getElementById('prsAsgNewDefBtn').addEventListener('click', () => {
+      const camps = JSON.parse(campFilter.dataset.camps || '[]');
+      showAssignmentDefModal(evSel.value, camps, null, () => reloadDefs());
     });
     document.getElementById('prsAsgDownloadBtn').addEventListener('click', async () => {
       try {
@@ -858,9 +1013,7 @@
           );
         } else if (data.downloadUrl) {
           const a = document.createElement('a');
-          a.href = data.downloadUrl;
-          a.target = '_blank';
-          a.rel = 'noopener';
+          a.href = data.downloadUrl; a.target = '_blank'; a.rel = 'noopener';
           a.download = data.fileName || 'prs_assignments.xlsx';
           a.click();
         } else {
@@ -870,55 +1023,555 @@
       } catch (e) { err(e); }
     });
 
-    await refreshCampSel();
-    await reload();
+    await refreshCampFilter();
+    await reloadDefs();
   }
 
-  async function showAssignmentModal(eventId, camps, existing, onDone) {
+  // ---- Modal: create / edit Assignment Definition ----
+  async function showAssignmentDefModal(eventId, camps, existing, onDone) {
     const isEdit = !!existing;
+    const modeOpts = PRS_ATTENDANCE_MODES.map(m =>
+      `<option value="${esc(m.value)}" ${existing && existing.attendanceMode === m.value ? 'selected' : ''}>${esc(m.label)}</option>`
+    ).join('');
+    const linkedCampIds = isEdit ? new Set((existing.camps || []).map(c => String(c.campId))) : new Set();
+    const campsHtml = camps.length
+      ? camps.map(c => `
+          <label style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.5rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">
+            <input type="checkbox" class="prs-def-camp" value="${esc(c.campId)}" ${linkedCampIds.has(String(c.campId)) ? 'checked' : ''} />
+            <span>${esc(c.campName)} — ${esc(c.state)}</span>
+          </label>
+        `).join('')
+      : '<p class="info info-muted">No camps in this event yet. Add one first.</p>';
+
     const { value } = await Swal.fire({
-      title: isEdit ? 'Edit Assignment' : 'Assign Staff to Camp',
+      title: isEdit ? 'Edit Activity' : 'New Activity',
+      width: 720,
       html: `
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Camp</label>
-        <select id="prsAsgCampSel" class="swal2-select" style="width:100%;padding:0.5rem;">
-          ${camps.map(c => `<option value="${esc(c.campId)}" ${existing && String(existing.campId) === String(c.campId) ? 'selected' : ''}>${esc(c.campName)} — ${esc(c.state)}</option>`).join('')}
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Title</label>
+        <input id="prsDefTitle" class="swal2-input" placeholder="e.g. Distribution of Kits Items"
+          value="${esc(existing ? existing.title : '')}" />
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Description / Brief</label>
+        <textarea id="prsDefDesc" class="swal2-textarea" placeholder="What is this activity about? Who is it for?">${esc(existing && existing.description || '')}</textarea>
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Attendance mode</label>
+        <select id="prsDefMode" class="swal2-select" style="width:100%;padding:0.5rem;">
+          ${modeOpts}
         </select>
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Staff Name</label>
-        <input id="prsAsgName" class="swal2-input" value="${esc(existing ? existing.staffName : '')}" placeholder="Full name" />
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Phone (Nigerian format)</label>
-        <input id="prsAsgPhone" class="swal2-input" value="${esc(existing ? existing.phone : '')}" placeholder="0803…" ${isEdit ? '' : ''} />
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Department</label>
-        <input id="prsAsgDept" class="swal2-input" value="${esc(existing ? existing.department : '')}" placeholder="e.g. Planning" />
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Required Days</label>
-        <input id="prsAsgDays" class="swal2-input" type="number" min="1" value="${esc(existing ? existing.requiredDays : 21)}" />
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-size:0.85rem;color:#666;">External Reference (optional)</label>
-        <input id="prsAsgRef" class="swal2-input" value="${esc(existing ? existing.staffSystemRecordId : '')}" placeholder="Leave blank to auto-generate" />
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+          <div style="flex:1;min-width:140px;">
+            <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Required days</label>
+            <input id="prsDefDays" class="swal2-input" type="number" min="1" value="${esc(existing ? existing.requiredDays : 1)}" />
+          </div>
+          <div style="flex:1;min-width:140px;">
+            <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Start date (optional)</label>
+            <input id="prsDefStart" class="swal2-input" type="date" value="${esc(existing ? fmtDateOnly(existing.startDate) : '')}" />
+          </div>
+          <div style="flex:1;min-width:140px;">
+            <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">End date (optional)</label>
+            <input id="prsDefEnd" class="swal2-input" type="date" value="${esc(existing ? fmtDateOnly(existing.endDate) : '')}" />
+          </div>
+        </div>
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Run at camps</label>
+        <div id="prsDefCamps" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;text-align:left;">
+          ${campsHtml}
+        </div>
       `,
       focusConfirm: false,
       showCancelButton: true,
-      confirmButtonText: isEdit ? 'Save' : 'Assign',
+      confirmButtonText: isEdit ? 'Save' : 'Create',
       preConfirm: () => {
-        const campId = document.getElementById('prsAsgCampSel').value;
-        const staffName = document.getElementById('prsAsgName').value.trim();
-        const phone = document.getElementById('prsAsgPhone').value.trim();
-        const department = document.getElementById('prsAsgDept').value.trim();
-        const requiredDays = parseInt(document.getElementById('prsAsgDays').value, 10) || 0;
-        const staffSystemRecordId = document.getElementById('prsAsgRef').value.trim();
-        if (!campId || !staffName || !phone) {
-          Swal.showValidationMessage('Camp, name and phone are required.'); return false;
-        }
-        return { campId, staffName, phone, department, requiredDays, staffSystemRecordId };
+        const title = document.getElementById('prsDefTitle').value.trim();
+        const description = document.getElementById('prsDefDesc').value.trim();
+        const attendanceMode = document.getElementById('prsDefMode').value;
+        const requiredDays = parseInt(document.getElementById('prsDefDays').value, 10) || 1;
+        const startDate = document.getElementById('prsDefStart').value;
+        const endDate = document.getElementById('prsDefEnd').value;
+        const campIds = Array.from(document.querySelectorAll('.prs-def-camp:checked')).map(el => el.value);
+        if (!title) { Swal.showValidationMessage('Title is required.'); return false; }
+        if (!campIds.length && !isEdit) { Swal.showValidationMessage('Pick at least one camp to run this activity at.'); return false; }
+        return { title, description, attendanceMode, requiredDays, startDate, endDate, campIds };
       },
     });
     if (!value) return;
-
     try {
       if (isEdit) {
-        await PrsApi.updateAssignment(ctx.adminKey, Object.assign({ assignmentId: existing.assignmentId }, value));
-        toast('Assignment updated.', 'success');
+        await PrsApi.updateAssignmentDef(ctx.adminKey, {
+          assignmentDefId: existing.assignmentDefId,
+          title: value.title,
+          description: value.description,
+          attendanceMode: value.attendanceMode,
+          requiredDays: value.requiredDays,
+          startDate: value.startDate,
+          endDate: value.endDate,
+        });
+        // Reconcile camp links separately so existing links don't get rewritten unintentionally.
+        const currentLinked = new Set((existing.camps || []).map(c => String(c.campId)));
+        const newLinked = new Set(value.campIds.map(String));
+        const toAdd = [...newLinked].filter(c => !currentLinked.has(c));
+        const toRemove = [...currentLinked].filter(c => !newLinked.has(c));
+        if (toAdd.length) {
+          await PrsApi.linkAssignmentToCamps(ctx.adminKey, existing.assignmentDefId, toAdd);
+        }
+        for (const c of toRemove) {
+          await PrsApi.unlinkAssignmentFromCamp(ctx.adminKey, existing.assignmentDefId, c);
+        }
+        toast('Activity updated.', 'success');
       } else {
-        await PrsApi.assignStaff(ctx.adminKey, Object.assign({ eventId }, value));
-        toast('Staff assigned.', 'success');
+        await PrsApi.createAssignmentDef(ctx.adminKey, Object.assign({ eventId }, value));
+        toast('Activity created.', 'success');
+      }
+      if (typeof onDone === 'function') onDone();
+    } catch (e) { err(e); }
+  }
+
+  // ---- Drill-in: one Assignment Definition (tabs: Camps / Roster / Materials) ----
+  async function openAssignmentDefDetail(def, mountEl, allCamps, onParentReload) {
+    asgNav.selectedDefId = def.assignmentDefId;
+    mountEl.innerHTML = `
+      <section class="card card-full-width prs-asg-detail-panel">
+        <div class="prs-asg-detail-head">
+          <div class="prs-asg-detail-title">
+            <h3 style="margin:0;">${esc(def.title)}</h3>
+            <div class="prs-asg-detail-meta">
+              <span class="badge badge-info">${esc(def.attendanceMode)}</span>
+              <span>Required days: <strong>${esc(def.requiredDays)}</strong></span>
+              <span>Status: <strong>${esc(def.status)}</strong></span>
+            </div>
+          </div>
+          <div class="prs-asg-detail-actions">
+            <button type="button" class="btn btn-sm btn-secondary" id="prsDefEditBtn">Edit</button>
+            ${def.status === 'ACTIVE' ? '<button type="button" class="btn btn-sm btn-danger" id="prsDefCloseBtn">Close Activity</button>' : ''}
+            <button type="button" class="btn btn-sm btn-secondary" id="prsDefBackBtn">← Back</button>
+          </div>
+        </div>
+        <div class="contextual-actions prs-asg-detail-tabs" id="prsDefSubTabs"></div>
+        <div id="prsDefSubBody" class="prs-asg-detail-body"></div>
+      </section>
+    `;
+
+    const subTabs = [
+      { id: 'roster',    label: '👥 Roster' },
+      { id: 'camps',     label: '🏕️ Camps' },
+      { id: 'materials', label: '📎 Materials' },
+    ];
+    const subTabsEl = document.getElementById('prsDefSubTabs');
+    const subBodyEl = document.getElementById('prsDefSubBody');
+    subTabsEl.innerHTML = subTabs.map((t, i) =>
+      `<button class="action-btn${i === 0 ? ' active' : ''}" data-subtab="${t.id}"><span>${t.label}</span></button>`
+    ).join('');
+
+    function activate(id) {
+      if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
+      subTabsEl.querySelectorAll('.action-btn').forEach(b => b.classList.toggle('active', b.dataset.subtab === id));
+      var p;
+      if (id === 'roster')    p = renderDefRoster(def, subBodyEl, allCamps);
+      else if (id === 'camps')     p = renderDefCamps(def, subBodyEl, allCamps);
+      else if (id === 'materials') p = renderDefMaterials(def, subBodyEl);
+      if (p && typeof p.then === 'function') {
+        p.finally(function () {
+          if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
+        });
+      } else if (typeof ScrollTop !== 'undefined') {
+        ScrollTop.afterRender();
+      }
+      return p;
+    }
+    subTabsEl.querySelectorAll('.action-btn').forEach(b => b.addEventListener('click', () => activate(b.dataset.subtab)));
+
+    document.getElementById('prsDefEditBtn').addEventListener('click', () => {
+      showAssignmentDefModal(def.eventId, allCamps, def, () => {
+        if (typeof onParentReload === 'function') onParentReload();
+        mountEl.innerHTML = '';
+      });
+    });
+    const closeBtn = document.getElementById('prsDefCloseBtn');
+    if (closeBtn) closeBtn.addEventListener('click', async () => {
+      const c = await Swal.fire({
+        icon: 'warning',
+        title: 'Close activity?',
+        text: 'Closed activities no longer accept new sign-ins. Existing roster and logs remain readable.',
+        showCancelButton: true,
+        confirmButtonText: 'Close Activity',
+      });
+      if (!c.isConfirmed) return;
+      try {
+        await PrsApi.closeAssignmentDef(ctx.adminKey, def.assignmentDefId);
+        toast('Activity closed.', 'success');
+        if (typeof onParentReload === 'function') onParentReload();
+        mountEl.innerHTML = '';
+      } catch (e) { err(e); }
+    });
+    document.getElementById('prsDefBackBtn').addEventListener('click', () => {
+      asgNav.selectedDefId = null;
+      mountEl.innerHTML = '';
+      if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
+    });
+
+    if (typeof ScrollTop !== 'undefined') ScrollTop.toTop();
+    activate('roster');
+  }
+
+  // ---- Sub-tab: Roster ----
+  async function renderDefRoster(def, body, allCamps) {
+    const linkedCamps = (def.camps && def.camps.length) ? def.camps : [];
+    body.innerHTML = `
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;margin-bottom:0.75rem;">
+        <div style="flex:1;min-width:220px;">
+          <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Filter by camp</label>
+          <select id="prsRosterCampFilter" class="swal2-select" style="width:100%;padding:0.5rem;">
+            <option value="">All linked camps</option>
+            ${linkedCamps.map(c => `<option value="${esc(c.campId)}">${esc(c.campName)} — ${esc(c.state)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary"   id="prsRosterAddBtn">➕ Add staff</button>
+        <button class="btn btn-secondary" id="prsRosterBulkBtn">📥 Bulk add to selected camps</button>
+      </div>
+      <div id="prsRosterWrap"></div>
+    `;
+    const filter = document.getElementById('prsRosterCampFilter');
+    const wrap = document.getElementById('prsRosterWrap');
+
+    async function reload() {
+      wrap.innerHTML = '<div class="info info-muted">Loading roster…</div>';
+      try {
+        const r = await PrsApi.listAssignmentRoster(ctx.adminKey, def.assignmentDefId, filter.value);
+        const rows = (r && r.data && r.data.roster) || [];
+        wrap.innerHTML = '<div id="prsRosterTableWrap"></div>';
+        paginatedTableView({
+          wrap: document.getElementById('prsRosterTableWrap'),
+          rows: rows,
+          searchPlaceholder: 'Search by name, phone, department or camp…',
+          emptyText: linkedCamps.length === 0
+            ? 'Link this activity to one or more camps first (see the Camps tab).'
+            : 'No staff on the roster yet.',
+          searchFields: a => [a.staffName, a.phone, a.department, a.campName, a.campState, a.status].filter(Boolean).join(' '),
+          rowAttrs: a => `data-asg-id="${esc(a.assignmentId)}"`,
+          columns: [
+            { label: 'Name',       render: a => esc(a.staffName) },
+            { label: 'Phone',      render: a => esc(a.phone) },
+            { label: 'Department', render: a => esc(a.department) },
+            { label: 'Camp',       render: a => esc((a.campName || '—') + (a.campState ? ' (' + a.campState + ')' : '')) },
+            { label: 'Days',       render: a => esc(a.requiredDays) },
+            { label: 'Status',     render: a => `<span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span>` },
+            { label: 'Actions',    render: () => `<button class="btn btn-xs btn-danger prs-roster-del">Remove</button>` },
+          ],
+          onAfterRender: (tbody) => {
+            tbody.querySelectorAll('.prs-roster-del').forEach(b => b.addEventListener('click', async () => {
+              const c = await Swal.fire({ icon: 'warning', title: 'Remove from roster?', text: 'If sign-ins exist this will be soft-revoked, not deleted.', showCancelButton: true });
+              if (!c.isConfirmed) return;
+              try {
+                await PrsApi.deleteAssignment(ctx.adminKey, b.closest('tr').dataset.asgId);
+                toast('Removed.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+          },
+        });
+      } catch (e) {
+        wrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
+      }
+    }
+
+    filter.addEventListener('change', reload);
+    document.getElementById('prsRosterAddBtn').addEventListener('click', async () => {
+      if (linkedCamps.length === 0) return toast('Link the activity to at least one camp first.', 'info');
+      const campOpts = linkedCamps.map(c => `<option value="${esc(c.campId)}">${esc(c.campName)} — ${esc(c.state)}</option>`).join('');
+      const { value } = await Swal.fire({
+        title: 'Add staff to activity',
+        html: `
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Camp</label>
+          <select id="prsRosCamp" class="swal2-select" style="width:100%;padding:0.5rem;">${campOpts}</select>
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Staff name</label>
+          <input id="prsRosName" class="swal2-input" placeholder="Full name" />
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Phone (Nigerian format)</label>
+          <input id="prsRosPhone" class="swal2-input" placeholder="0803…" />
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Department</label>
+          <input id="prsRosDept" class="swal2-input" placeholder="e.g. Planning" />
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-size:0.85rem;color:#666;">Required-days override (optional)</label>
+          <input id="prsRosDays" class="swal2-input" type="number" min="0" placeholder="Leave blank to use activity default (${esc(def.requiredDays)})" />
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Add',
+        preConfirm: () => {
+          const campId = document.getElementById('prsRosCamp').value;
+          const staffName = document.getElementById('prsRosName').value.trim();
+          const phone = document.getElementById('prsRosPhone').value.trim();
+          const department = document.getElementById('prsRosDept').value.trim();
+          const rDays = parseInt(document.getElementById('prsRosDays').value, 10);
+          if (!campId || !staffName || !phone) {
+            Swal.showValidationMessage('Camp, name and phone are required.'); return false;
+          }
+          return {
+            campId, staffName, phone, department,
+            requiredDaysOverride: isNaN(rDays) ? 0 : rDays,
+          };
+        },
+      });
+      if (!value) return;
+      try {
+        await PrsApi.addStaffToAssignment(ctx.adminKey, Object.assign({ assignmentDefId: def.assignmentDefId }, value));
+        toast('Staff added.', 'success');
+        reload();
+      } catch (e) { err(e); }
+    });
+
+    document.getElementById('prsRosterBulkBtn').addEventListener('click', async () => {
+      if (linkedCamps.length === 0) return toast('Link the activity to at least one camp first.', 'info');
+      const campOpts = linkedCamps.map(c =>
+        `<label style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.5rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">
+          <input type="checkbox" class="prs-bulk-camp" value="${esc(c.campId)}" checked />
+          <span>${esc(c.campName)} — ${esc(c.state)}</span>
+        </label>`
+      ).join('');
+      const { value } = await Swal.fire({
+        title: 'Bulk-add staff to selected camps',
+        width: 720,
+        html: `
+          <p style="text-align:left;font-size:0.85rem;color:#555;">
+            Paste one staff per line in <strong>name, phone, department</strong> format (commas).
+            Department is optional. Each entry will be added to every camp ticked below.
+          </p>
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Camps</label>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;text-align:left;">${campOpts}</div>
+          <label style="display:block;text-align:left;margin:0.75rem 0 0.25rem 0;font-weight:600;">Staff list (one per line)</label>
+          <textarea id="prsBulkBox" class="swal2-textarea" rows="8" placeholder="Jane Doe, 08031234567, Planning
+John Roe, 07045678901, Operations"></textarea>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Add',
+        preConfirm: () => {
+          const campIds = Array.from(document.querySelectorAll('.prs-bulk-camp:checked')).map(el => el.value);
+          if (!campIds.length) { Swal.showValidationMessage('Tick at least one camp.'); return false; }
+          const raw = document.getElementById('prsBulkBox').value || '';
+          const staff = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
+            const parts = line.split(',').map(p => p.trim());
+            return { staffName: parts[0] || '', phone: parts[1] || '', department: parts[2] || '' };
+          }).filter(s => s.staffName && s.phone);
+          if (!staff.length) { Swal.showValidationMessage('At least one valid "name, phone" line is required.'); return false; }
+          return { campIds, staff };
+        },
+      });
+      if (!value) return;
+      try {
+        const r = await PrsApi.bulkAddStaffToAssignment(ctx.adminKey, Object.assign({ assignmentDefId: def.assignmentDefId }, value));
+        const d = (r && r.data) || {};
+        toast(`Added ${d.added || 0} • Skipped ${((d.skipped || []).length) || 0}`, (d.skipped && d.skipped.length) ? 'info' : 'success');
+        reload();
+      } catch (e) { err(e); }
+    });
+
+    reload();
+  }
+
+  // ---- Sub-tab: Camps ----
+  async function renderDefCamps(def, body, allCamps) {
+    body.innerHTML = `
+      <p class="info info-muted">Tick camps where this activity should run. Unticking removes the link (soft delete — roster/logs are preserved).</p>
+      <div id="prsDefCampGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;margin-bottom:1rem;">
+        ${allCamps.length ? allCamps.map(c => {
+          const linked = (def.camps || []).some(x => String(x.campId) === String(c.campId));
+          return `
+            <label style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.6rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">
+              <input type="checkbox" class="prs-def-detail-camp" value="${esc(c.campId)}" ${linked ? 'checked' : ''} />
+              <span><strong>${esc(c.campName)}</strong> — ${esc(c.state)}</span>
+            </label>
+          `;
+        }).join('') : '<p class="info info-muted">No camps in this event yet.</p>'}
+      </div>
+      <button class="btn btn-primary" id="prsDefCampSaveBtn">Save camp links</button>
+    `;
+    document.getElementById('prsDefCampSaveBtn').addEventListener('click', async () => {
+      const desired = new Set(Array.from(document.querySelectorAll('.prs-def-detail-camp:checked')).map(el => el.value));
+      const current = new Set((def.camps || []).map(c => String(c.campId)));
+      const toAdd = [...desired].filter(c => !current.has(c));
+      const toRemove = [...current].filter(c => !desired.has(c));
+      try {
+        if (toAdd.length) {
+          await PrsApi.linkAssignmentToCamps(ctx.adminKey, def.assignmentDefId, toAdd);
+        }
+        for (const c of toRemove) {
+          await PrsApi.unlinkAssignmentFromCamp(ctx.adminKey, def.assignmentDefId, c);
+        }
+        toast('Camp links saved.', 'success');
+        // Refresh the in-memory def so subsequent renders reflect new links.
+        const r = await PrsApi.listAssignmentCamps(ctx.adminKey, def.assignmentDefId);
+        def.camps = (r && r.data && r.data.camps) || [];
+      } catch (e) { err(e); }
+    });
+  }
+
+  // ---- Sub-tab: Materials ----
+  async function renderDefMaterials(def, body) {
+    body.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.75rem;margin-bottom:0.75rem;">
+        <p class="info info-muted" style="margin:0;">Materials are downloadable resources (forms, manuals, guides). The Release Rule decides when staff can claim them via the QR page.</p>
+        <button class="btn btn-primary" id="prsMatAddBtn">➕ Add material</button>
+      </div>
+      <div id="prsMatWrap"></div>
+    `;
+    const wrap = document.getElementById('prsMatWrap');
+
+    async function reload() {
+      wrap.innerHTML = '<div class="info info-muted">Loading materials…</div>';
+      try {
+        const [r, s] = await Promise.all([
+          PrsApi.listAssignmentMaterials(ctx.adminKey, def.assignmentDefId),
+          PrsApi.getMaterialReleaseStats(ctx.adminKey, def.assignmentDefId),
+        ]);
+        const mats = (r && r.data && r.data.materials) || [];
+        const stats = (s && s.data && s.data.stats) || {};
+        wrap.innerHTML = '<div id="prsMatTableWrap"></div>';
+        paginatedTableView({
+          wrap: document.getElementById('prsMatTableWrap'),
+          rows: mats,
+          searchPlaceholder: 'Search materials by title, rule or type…',
+          emptyText: 'No materials yet. Paste a hosted file URL (Drive, Dropbox, NYSC portal…).',
+          searchFields: m => [m.title, m.releaseRule, m.fileType, m.status].filter(Boolean).join(' '),
+          rowAttrs: m => `data-mat-id="${esc(m.materialId)}"`,
+          columns: [
+            { label: 'Title', render: m => `
+              <div style="font-weight:600;">${esc(m.title)}</div>
+              <div style="font-size:0.8rem;"><a href="${esc(m.fileUrl)}" target="_blank" rel="noopener" style="word-break:break-all;">${esc(m.fileUrl)}</a></div>
+            ` },
+            { label: 'Type',  render: m => esc(m.fileType || '') },
+            { label: 'Rule',  render: m => `<span class="badge badge-info" title="${esc(prsReleaseRuleLabel(m))}">${esc(m.releaseRule)}</span>` },
+            { label: 'When',  render: m => prsReleaseTiming(m) },
+            { label: 'Released?', render: m => m.releaseRule === 'MANUAL'
+                ? (m.releasedAt
+                    ? `<span class="badge badge-success">Released ${esc(fmtDate(m.releasedAt))}</span>`
+                    : `<span class="badge badge-warning">Pending admin release</span>`)
+                : '<span class="badge badge-muted">Auto</span>' },
+            { label: 'Downloads', render: m => {
+              const st = stats[m.materialId] || { downloads: 0, distinctPhones: 0 };
+              return `${esc(st.downloads)} <span style="color:var(--text-muted);font-size:0.8rem;">(${esc(st.distinctPhones)} staff)</span>`;
+            } },
+            { label: 'Status', render: m => `<span class="badge badge-${m.status === 'ACTIVE' ? 'success' : 'muted'}">${esc(m.status)}</span>` },
+            { label: 'Actions', render: m => `
+              ${m.releaseRule === 'MANUAL' && !m.releasedAt && m.status === 'ACTIVE'
+                ? '<button class="btn btn-xs btn-primary prs-mat-release">Release now</button>' : ''}
+              <button class="btn btn-xs btn-secondary prs-mat-edit">Edit</button>
+              <button class="btn btn-xs btn-danger prs-mat-del">Remove</button>
+            ` },
+          ],
+          onAfterRender: (tbody) => {
+            tbody.querySelectorAll('.prs-mat-edit').forEach(b => b.addEventListener('click', () => {
+              const id = b.closest('tr').dataset.matId;
+              const m = mats.find(x => String(x.materialId) === id);
+              showMaterialModal(def, m, reload);
+            }));
+            tbody.querySelectorAll('.prs-mat-release').forEach(b => b.addEventListener('click', async () => {
+              const id = b.closest('tr').dataset.matId;
+              try {
+                await PrsApi.releaseAssignmentMaterialNow(ctx.adminKey, id);
+                toast('Material released.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+            tbody.querySelectorAll('.prs-mat-del').forEach(b => b.addEventListener('click', async () => {
+              const c = await Swal.fire({ icon: 'warning', title: 'Remove material?', text: 'This soft-deletes the material; download history is preserved.', showCancelButton: true });
+              if (!c.isConfirmed) return;
+              try {
+                await PrsApi.deleteAssignmentMaterial(ctx.adminKey, b.closest('tr').dataset.matId);
+                toast('Removed.', 'success');
+                reload();
+              } catch (e) { err(e); }
+            }));
+          },
+        });
+      } catch (e) {
+        wrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
+      }
+    }
+
+    document.getElementById('prsMatAddBtn').addEventListener('click', () => showMaterialModal(def, null, reload));
+    reload();
+  }
+
+  function prsReleaseRuleLabel(m) {
+    const r = PRS_RELEASE_RULES.find(x => x.value === m.releaseRule);
+    return r ? r.label : m.releaseRule;
+  }
+
+  function prsReleaseTiming(m) {
+    if (m.releaseRule === 'IMMEDIATE') return 'Immediately';
+    if (m.releaseRule === 'ON_SIGN_IN') return 'On first sign-in';
+    if (m.releaseRule === 'ON_SIGN_IN_DAY_N') return 'On sign-in day ' + esc(m.releaseAfterSignInDay || 1);
+    if (m.releaseRule === 'ON_DATE') return m.releaseDate ? esc(fmtDateOnly(m.releaseDate)) : '<span class="info-muted">No date set</span>';
+    if (m.releaseRule === 'MANUAL') return 'Admin click';
+    return '';
+  }
+
+  async function showMaterialModal(def, existing, onDone) {
+    const isEdit = !!existing;
+    const ruleOpts = PRS_RELEASE_RULES.map(r =>
+      `<option value="${esc(r.value)}" ${existing && existing.releaseRule === r.value ? 'selected' : ''}>${esc(r.label)}</option>`
+    ).join('');
+    const { value } = await Swal.fire({
+      title: isEdit ? 'Edit material' : 'Add material',
+      width: 680,
+      html: `
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Title</label>
+        <input id="prsMatTitle" class="swal2-input" placeholder="e.g. Foreign Credential Verification Form"
+          value="${esc(existing ? existing.title : '')}" />
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Description</label>
+        <textarea id="prsMatDesc" class="swal2-textarea" placeholder="What is this file? Any notes for the staff?">${esc(existing && existing.description || '')}</textarea>
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">File URL</label>
+        <input id="prsMatUrl" class="swal2-input" placeholder="https://drive.google.com/…"
+          value="${esc(existing ? existing.fileUrl : '')}" />
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">File type (optional)</label>
+        <input id="prsMatType" class="swal2-input" placeholder="pdf / docx / xlsx / image / zip…"
+          value="${esc(existing ? existing.fileType : '')}" />
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Release rule</label>
+        <select id="prsMatRule" class="swal2-select" style="width:100%;padding:0.5rem;">${ruleOpts}</select>
+        <div id="prsMatDateWrap" style="display:none;">
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Release date</label>
+          <input id="prsMatDate" class="swal2-input" type="date" value="${esc(existing && existing.releaseDate ? fmtDateOnly(existing.releaseDate) : '')}" />
+        </div>
+        <div id="prsMatDayNWrap" style="display:none;">
+          <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Release after sign-in day N</label>
+          <input id="prsMatDayN" class="swal2-input" type="number" min="1" value="${esc(existing && existing.releaseAfterSignInDay || 1)}" />
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: isEdit ? 'Save' : 'Add',
+      didOpen: () => {
+        const ruleSel = document.getElementById('prsMatRule');
+        const dateWrap = document.getElementById('prsMatDateWrap');
+        const dayNWrap = document.getElementById('prsMatDayNWrap');
+        function sync() {
+          dateWrap.style.display = ruleSel.value === 'ON_DATE' ? 'block' : 'none';
+          dayNWrap.style.display = ruleSel.value === 'ON_SIGN_IN_DAY_N' ? 'block' : 'none';
+        }
+        ruleSel.addEventListener('change', sync);
+        sync();
+      },
+      preConfirm: () => {
+        const title = document.getElementById('prsMatTitle').value.trim();
+        const description = document.getElementById('prsMatDesc').value.trim();
+        const fileUrl = document.getElementById('prsMatUrl').value.trim();
+        const fileType = document.getElementById('prsMatType').value.trim();
+        const releaseRule = document.getElementById('prsMatRule').value;
+        const releaseDate = document.getElementById('prsMatDate').value || '';
+        const releaseAfterSignInDay = parseInt(document.getElementById('prsMatDayN').value, 10) || 0;
+        if (!title || !fileUrl) {
+          Swal.showValidationMessage('Title and file URL are required.'); return false;
+        }
+        if (!/^https?:\/\//i.test(fileUrl)) {
+          Swal.showValidationMessage('File URL must start with http:// or https://'); return false;
+        }
+        return { title, description, fileUrl, fileType, releaseRule, releaseDate, releaseAfterSignInDay };
+      },
+    });
+    if (!value) return;
+    try {
+      if (isEdit) {
+        await PrsApi.updateAssignmentMaterial(ctx.adminKey, Object.assign({ materialId: existing.materialId }, value));
+        toast('Material updated.', 'success');
+      } else {
+        await PrsApi.addAssignmentMaterial(ctx.adminKey, Object.assign({ assignmentDefId: def.assignmentDefId }, value));
+        toast('Material added.', 'success');
       }
       if (typeof onDone === 'function') onDone();
     } catch (e) { err(e); }

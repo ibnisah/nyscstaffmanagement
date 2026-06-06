@@ -402,6 +402,7 @@
     });
     var el = document.getElementById(id);
     if (el) el.classList.add('active');
+    if (typeof ScrollTop !== 'undefined') ScrollTop.afterRender();
   }
 
   function setError(msg) {
