@@ -115,6 +115,12 @@
     initializeSheets:    (key) => call('prsInitializeSheets', { key }),
     migrateLegacyRoster: (key) => call('prsMigrateLegacyRoster', { key }),
 
+    // ---- Reuse / copy from previous events ----
+    copyCampsFromEvent:      (key, body) => call('prsCopyCampsFromEvent',      Object.assign({ key }, body)),
+    duplicateAssignmentDef:  (key, body) => call('prsDuplicateAssignmentDef',  Object.assign({ key }, body)),
+    copyEventSetup:          (key, body) => call('prsCopyEventSetup',          Object.assign({ key }, body)),
+    copyRosterFromAssignment:(key, body) => call('prsCopyRosterFromAssignment', Object.assign({ key }, body)),
+
     // ---- SUPER_ADMIN exclusive: mark attendance on behalf of a staff ----
     adminMarkAttendance: (key, body) => call('prsAdminMarkAttendance', Object.assign({ key }, body)),
   };
@@ -176,6 +182,94 @@
     const d = v instanceof Date ? v : new Date(v);
     if (isNaN(d.getTime())) return esc(v);
     return d.toISOString().slice(0, 10);
+  }
+
+  async function loadAllEvents() {
+    const res = await PrsApi.listEvents(ctx.adminKey, '');
+    return (res && res.data && res.data.events) || [];
+  }
+
+  async function pickSourceEvent(events, excludeEventId, title) {
+    const choices = (events || []).filter(e => String(e.eventId) !== String(excludeEventId || ''));
+    if (!choices.length) {
+      toast('No other events available to copy from.', 'info');
+      return null;
+    }
+    const options = {};
+    choices.forEach(e => { options[e.eventId] = `${e.eventName} (${e.status})`; });
+    const result = await Swal.fire({
+      title: title || 'Select source event',
+      input: 'select',
+      inputOptions: options,
+      inputPlaceholder: 'Choose an event…',
+      showCancelButton: true,
+      inputValidator: (v) => (!v ? 'Please select an event.' : undefined),
+    });
+    return result.isConfirmed && result.value ? result.value : null;
+  }
+
+  async function pickSourceActivity(sourceEventId, title) {
+    const r = await PrsApi.listAssignmentDefs(ctx.adminKey, sourceEventId, '');
+    const defs = (r && r.data && r.data.assignmentDefs) || [];
+    const active = defs.filter(d => String(d.status).toUpperCase() === 'ACTIVE');
+    if (!active.length) {
+      toast('That event has no activities to copy from.', 'info');
+      return null;
+    }
+    const options = {};
+    active.forEach(d => {
+      options[d.assignmentDefId] = `${d.title} (${d.rosterCount || 0} staff, ${d.materialsCount || 0} materials)`;
+    });
+    const result = await Swal.fire({
+      title: title || 'Select source activity',
+      input: 'select',
+      inputOptions: options,
+      showCancelButton: true,
+      inputValidator: (v) => (!v ? 'Please select an activity.' : undefined),
+    });
+    return result.isConfirmed && result.value ? result.value : null;
+  }
+
+  async function showCopyOptionsModal(defaults) {
+    const d = Object.assign({ camps: true, activities: true, rosters: true, materials: true }, defaults || {});
+    const result = await Swal.fire({
+      title: 'What to reuse?',
+      html: `
+        <p style="text-align:left;font-size:0.9rem;color:#555;margin-bottom:0.75rem;">
+          Camps are matched by <strong>name + state</strong> when possible (existing camps are reused, not duplicated).
+          New QR codes are generated only for camps that are actually copied.
+        </p>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.45rem 0;text-align:left;">
+          <input type="checkbox" id="prsCopyCamps" ${d.camps ? 'checked' : ''} /> Camp locations &amp; GPS addresses
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.45rem 0;text-align:left;">
+          <input type="checkbox" id="prsCopyActivities" ${d.activities ? 'checked' : ''} /> Activities (assignments)
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.45rem 0;text-align:left;">
+          <input type="checkbox" id="prsCopyRosters" ${d.rosters ? 'checked' : ''} /> Staff rosters
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.45rem 0;text-align:left;">
+          <input type="checkbox" id="prsCopyMaterials" ${d.materials ? 'checked' : ''} /> Materials &amp; download links
+        </label>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Copy selected',
+      preConfirm: () => {
+        const opts = {
+          camps: document.getElementById('prsCopyCamps').checked,
+          activities: document.getElementById('prsCopyActivities').checked,
+          rosters: document.getElementById('prsCopyRosters').checked,
+          materials: document.getElementById('prsCopyMaterials').checked,
+        };
+        if (!opts.camps && !opts.activities && !opts.rosters && !opts.materials) {
+          Swal.showValidationMessage('Tick at least one item to copy.');
+          return false;
+        }
+        return opts;
+      },
+    });
+    return result.isConfirmed && result.value ? result.value : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -635,8 +729,14 @@
 
   async function showEventModal(existing, container) {
     const isEdit = !!existing;
+    const allEvents = isEdit ? [] : await loadAllEvents();
+    const copyEventOptions = allEvents.length
+      ? otherEvents.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)} (${esc(e.status)})</option>`).join('')
+      : '';
+
     const { value: formValues } = await Swal.fire({
       title: isEdit ? 'Edit Event' : 'New Camp Event',
+      width: 640,
       html: `
         <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Event Name</label>
         <input id="prsEvName" class="swal2-input" placeholder="e.g. Batch C Stream 2 2025"
@@ -649,10 +749,33 @@
           value="${esc(existing ? fmtDateOnly(existing.endDate) : '')}" />
         <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;">Notes (optional)</label>
         <textarea id="prsEvNotes" class="swal2-textarea" placeholder="Internal notes">${esc(existing && existing.notes || '')}</textarea>
+        ${!isEdit && copyEventOptions ? `
+          <hr style="margin:1rem 0;border:none;border-top:1px solid #e5e7eb;" />
+          <label style="display:flex;align-items:center;gap:0.5rem;text-align:left;font-weight:600;margin-bottom:0.5rem;">
+            <input type="checkbox" id="prsEvCopyEnable" /> Reuse setup from a previous event
+          </label>
+          <div id="prsEvCopyPanel" style="display:none;text-align:left;">
+            <label style="display:block;margin:0.35rem 0 0.25rem 0;">Copy from</label>
+            <select id="prsEvCopyFrom" class="swal2-select" style="width:100%;padding:0.5rem;">
+              <option value="">— Select event —</option>
+              ${copyEventOptions}
+            </select>
+            <p style="font-size:0.85rem;color:#666;margin:0.5rem 0;">You can choose camps, activities, rosters, and materials on the next step.</p>
+          </div>
+        ` : ''}
       `,
       focusConfirm: false,
       showCancelButton: true,
       confirmButtonText: isEdit ? 'Save' : 'Create',
+      didOpen: () => {
+        const en = document.getElementById('prsEvCopyEnable');
+        const panel = document.getElementById('prsEvCopyPanel');
+        if (en && panel) {
+          en.addEventListener('change', () => {
+            panel.style.display = en.checked ? 'block' : 'none';
+          });
+        }
+      },
       preConfirm: () => {
         const eventName = document.getElementById('prsEvName').value.trim();
         const startDate = document.getElementById('prsEvStart').value;
@@ -666,7 +789,17 @@
           Swal.showValidationMessage('End date must be on or after start date.');
           return false;
         }
-        return { eventName, startDate, endDate, notes };
+        const out = { eventName, startDate, endDate, notes };
+        const copyEn = document.getElementById('prsEvCopyEnable');
+        const copyFrom = document.getElementById('prsEvCopyFrom');
+        if (copyEn && copyEn.checked) {
+          if (!copyFrom || !copyFrom.value) {
+            Swal.showValidationMessage('Select an event to copy from, or untick reuse.');
+            return false;
+          }
+          out.copyFromEventId = copyFrom.value;
+        }
+        return out;
       },
     });
     if (!formValues) return;
@@ -676,8 +809,43 @@
         await PrsApi.updateEvent(ctx.adminKey, Object.assign({ eventId: existing.eventId }, formValues));
         toast('Event updated.', 'success');
       } else {
-        await PrsApi.createEvent(ctx.adminKey, formValues);
+        const copyFromEventId = formValues.copyFromEventId;
+        const createPayload = {
+          eventName: formValues.eventName,
+          startDate: formValues.startDate,
+          endDate: formValues.endDate,
+          notes: formValues.notes,
+        };
+        const createRes = await PrsApi.createEvent(ctx.adminKey, createPayload);
+        const newEventId = createRes && createRes.data && createRes.data.eventId;
         toast('Event created.', 'success');
+
+        if (copyFromEventId && newEventId) {
+          const copyOpts = await showCopyOptionsModal();
+          if (copyOpts) {
+            Swal.fire({ title: 'Copying setup…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+              const copyRes = await PrsApi.copyEventSetup(ctx.adminKey, {
+                sourceEventId: copyFromEventId,
+                targetEventId: newEventId,
+                options: {
+                  camps: copyOpts.camps,
+                  activities: copyOpts.activities,
+                  rosters: copyOpts.rosters,
+                  materials: copyOpts.materials,
+                },
+              });
+              Swal.close();
+              const cd = (copyRes && copyRes.data) || {};
+              const nActs = (cd.activities || []).length;
+              const nCamps = ((cd.camps && cd.camps.copied) || []).length + ((cd.camps && cd.camps.reused) || []).length;
+              toast(`Reused setup: ${nCamps} camp link(s), ${nActs} activit${nActs === 1 ? 'y' : 'ies'}.`, 'success');
+            } catch (copyErr) {
+              Swal.close();
+              err(copyErr);
+            }
+          }
+        }
       }
       renderEvents(container);
     } catch (e) { err(e); }
@@ -705,8 +873,9 @@
         <select id="prsCampEventSelect" class="swal2-select" style="width:100%;max-width:400px;padding:0.5rem;">
           ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)} (${esc(e.status)})</option>`).join('')}
         </select>
-        <div style="margin:1rem 0;">
+        <div style="margin:1rem 0;display:flex;gap:0.5rem;flex-wrap:wrap;">
           <button class="btn btn-primary" id="prsAddCampBtn">➕ Add Camp</button>
+          <button class="btn btn-secondary" id="prsCopyCampsBtn">📋 Copy from another event</button>
           <button class="btn btn-secondary" id="prsRefreshCampsBtn">Refresh</button>
         </div>
         <div class="table-wrapper" id="prsCampsTableWrap"></div>
@@ -779,6 +948,36 @@
     document.getElementById('prsRefreshCampsBtn').addEventListener('click', reload);
     document.getElementById('prsAddCampBtn').addEventListener('click', () => {
       showCampModal(eventSelect.value, null, reload);
+    });
+    document.getElementById('prsCopyCampsBtn').addEventListener('click', async () => {
+      const targetEventId = eventSelect.value;
+      if (!targetEventId) return;
+      const allEv = await loadAllEvents();
+      const sourceEventId = await pickSourceEvent(allEv, targetEventId, 'Copy camps from…');
+      if (!sourceEventId) return;
+      const confirm = await Swal.fire({
+        icon: 'question',
+        title: 'Copy camp locations?',
+        text: 'Camp name, state, GPS coordinates and radius will be copied. Matching camps (same name + state) in this event are reused instead of duplicated. Each new camp gets a fresh QR token.',
+        showCancelButton: true,
+        confirmButtonText: 'Copy camps',
+      });
+      if (!confirm.isConfirmed) return;
+      try {
+        Swal.fire({ title: 'Copying camps…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const res = await PrsApi.copyCampsFromEvent(ctx.adminKey, {
+          sourceEventId,
+          targetEventId,
+          skipExisting: true,
+        });
+        Swal.close();
+        const d = (res && res.data) || {};
+        toast(`${(d.copied || []).length} copied, ${(d.reused || []).length} matched existing.`, 'success');
+        reload();
+      } catch (e) {
+        Swal.close();
+        err(e);
+      }
     });
 
     reload();
@@ -893,6 +1092,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:1rem;">
           <h2 style="margin:0;">Activities <span style="font-size:0.85rem;color:var(--text-muted);font-weight:400;">(per-event assignments)</span></h2>
           <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary" id="prsAsgCopyFromEventBtn">📋 Copy from previous event</button>
             <button class="btn btn-secondary" id="prsAsgDownloadBtn">⬇ Download Records (Excel)</button>
             <button class="btn btn-primary"   id="prsAsgNewDefBtn">➕ New Activity</button>
           </div>
@@ -963,7 +1163,7 @@
             { label: 'Actions', render: () => `
               <button class="btn btn-xs btn-primary prs-def-open">Open</button>
               <button class="btn btn-xs btn-secondary prs-def-edit">Edit</button>
-              ${'' /* close lives inside the open detail view */}
+              <button class="btn btn-xs btn-secondary prs-def-dup" title="Duplicate this activity">Duplicate</button>
             ` },
           ],
           onAfterRender: (tbody) => {
@@ -976,6 +1176,11 @@
               const defId = b.closest('tr').dataset.defId;
               const def = defs.find(x => String(x.assignmentDefId) === defId);
               if (def) showAssignmentDefModal(evSel.value, JSON.parse(campFilter.dataset.camps || '[]'), def, () => reloadDefs());
+            }));
+            tbody.querySelectorAll('.prs-def-dup').forEach(b => b.addEventListener('click', () => {
+              const defId = b.closest('tr').dataset.defId;
+              const def = defs.find(x => String(x.assignmentDefId) === defId);
+              if (def) duplicateActivityPrompt(def, evSel.value, () => reloadDefs());
             }));
           },
         });
@@ -998,6 +1203,31 @@
     document.getElementById('prsAsgNewDefBtn').addEventListener('click', () => {
       const camps = JSON.parse(campFilter.dataset.camps || '[]');
       showAssignmentDefModal(evSel.value, camps, null, () => reloadDefs());
+    });
+    document.getElementById('prsAsgCopyFromEventBtn').addEventListener('click', async () => {
+      const targetEventId = evSel.value;
+      if (!targetEventId) return;
+      const allEv = await loadAllEvents();
+      const sourceEventId = await pickSourceEvent(allEv, targetEventId, 'Copy activities from…');
+      if (!sourceEventId) return;
+      const copyOpts = await showCopyOptionsModal({ camps: true, activities: true, rosters: true, materials: true });
+      if (!copyOpts) return;
+      try {
+        Swal.fire({ title: 'Copying…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const res = await PrsApi.copyEventSetup(ctx.adminKey, {
+          sourceEventId,
+          targetEventId,
+          options: copyOpts,
+        });
+        Swal.close();
+        const d = (res && res.data) || {};
+        toast(`Copied ${(d.activities || []).length} activit${(d.activities || []).length === 1 ? 'y' : 'ies'}.`, 'success');
+        await refreshCampFilter();
+        reloadDefs();
+      } catch (e) {
+        Swal.close();
+        err(e);
+      }
     });
     document.getElementById('prsAsgDownloadBtn').addEventListener('click', async () => {
       try {
@@ -1028,6 +1258,63 @@
   }
 
   // ---- Modal: create / edit Assignment Definition ----
+  async function duplicateActivityPrompt(sourceDef, targetEventId, onDone) {
+    const sameEvent = String(sourceDef.eventId || '') === String(targetEventId);
+    const result = await Swal.fire({
+      title: 'Duplicate activity',
+      width: 560,
+      html: `
+        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem;font-weight:600;">New title</label>
+        <input id="prsDupTitle" class="swal2-input" value="${esc(sourceDef.title + (sameEvent ? ' (Copy)' : ''))}" />
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.65rem 0;text-align:left;">
+          <input type="checkbox" id="prsDupRoster" checked /> Copy staff roster
+        </label>
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.65rem 0;text-align:left;">
+          <input type="checkbox" id="prsDupMaterials" checked /> Copy materials &amp; download links
+        </label>
+        ${!sameEvent ? `
+        <label style="display:flex;align-items:center;gap:0.5rem;margin:0.65rem 0;text-align:left;">
+          <input type="checkbox" id="prsDupAutoCamp" checked /> Copy missing camps from source event
+        </label>
+        ` : ''}
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Duplicate',
+      preConfirm: () => {
+        const title = document.getElementById('prsDupTitle').value.trim();
+        if (!title) { Swal.showValidationMessage('Title is required.'); return false; }
+        return {
+          title,
+          copyRoster: document.getElementById('prsDupRoster').checked,
+          copyMaterials: document.getElementById('prsDupMaterials').checked,
+          autoCopyMissingCamps: !sameEvent && document.getElementById('prsDupAutoCamp')
+            ? document.getElementById('prsDupAutoCamp').checked
+            : false,
+        };
+      },
+    });
+    if (!result.isConfirmed || !result.value) return;
+    try {
+      Swal.fire({ title: 'Duplicating…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+      const res = await PrsApi.duplicateAssignmentDef(ctx.adminKey, {
+        sourceAssignmentDefId: sourceDef.assignmentDefId,
+        targetEventId,
+        title: result.value.title,
+        copyRoster: result.value.copyRoster,
+        copyMaterials: result.value.copyMaterials,
+        autoCopyMissingCamps: result.value.autoCopyMissingCamps,
+      });
+      Swal.close();
+      const d = (res && res.data) || {};
+      toast(`Duplicated: ${d.rosterAdded || 0} staff, ${d.materialsAdded || 0} materials.`, 'success');
+      if (typeof onDone === 'function') onDone();
+    } catch (e) {
+      Swal.close();
+      err(e);
+    }
+  }
+
   async function showAssignmentDefModal(eventId, camps, existing, onDone) {
     const isEdit = !!existing;
     const modeOpts = PRS_ATTENDANCE_MODES.map(m =>
@@ -1224,6 +1511,7 @@
         </div>
         <button class="btn btn-primary"   id="prsRosterAddBtn">➕ Add staff</button>
         <button class="btn btn-secondary" id="prsRosterBulkBtn">📥 Bulk add to selected camps</button>
+        <button class="btn btn-secondary" id="prsRosterImportBtn">📋 Import from previous activity</button>
       </div>
       <div id="prsRosterWrap"></div>
     `;
@@ -1359,6 +1647,37 @@ John Roe, 07045678901, Operations"></textarea>
         toast(`Added ${d.added || 0} • Skipped ${((d.skipped || []).length) || 0}`, (d.skipped && d.skipped.length) ? 'info' : 'success');
         reload();
       } catch (e) { err(e); }
+    });
+
+    document.getElementById('prsRosterImportBtn').addEventListener('click', async () => {
+      const allEv = await loadAllEvents();
+      const sourceEventId = await pickSourceEvent(allEv, def.eventId, 'Import roster from event…');
+      if (!sourceEventId) return;
+      const sourceDefId = await pickSourceActivity(sourceEventId, 'Import roster from activity…');
+      if (!sourceDefId) return;
+      const confirm = await Swal.fire({
+        icon: 'question',
+        title: 'Import staff roster?',
+        html: `<p style="text-align:left;font-size:0.9rem;">Staff are matched to camps by <strong>camp name + state</strong>. Duplicates (same phone at same camp) are skipped. Missing camps can be copied automatically.</p>`,
+        showCancelButton: true,
+        confirmButtonText: 'Import roster',
+      });
+      if (!confirm.isConfirmed) return;
+      try {
+        Swal.fire({ title: 'Importing roster…', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const res = await PrsApi.copyRosterFromAssignment(ctx.adminKey, {
+          sourceAssignmentDefId: sourceDefId,
+          targetAssignmentDefId: def.assignmentDefId,
+          autoCopyMissingCamps: true,
+        });
+        Swal.close();
+        const d = (res && res.data) || {};
+        toast(`${d.rosterAdded || 0} imported, ${d.rosterSkipped || 0} skipped.`, 'success');
+        reload();
+      } catch (e) {
+        Swal.close();
+        err(e);
+      }
     });
 
     reload();
