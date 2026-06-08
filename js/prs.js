@@ -839,7 +839,7 @@
               const cd = (copyRes && copyRes.data) || {};
               const nActs = (cd.activities || []).length;
               const nCamps = ((cd.camps && cd.camps.copied) || []).length + ((cd.camps && cd.camps.reused) || []).length;
-              toast(`Reused setup: ${nCamps} camp link(s), ${nActs} activit${nActs === 1 ? 'y' : 'ies'}.`, 'success');
+              toast(`Copied setup: ${nCamps} camp(s), ${nActs} activit${nActs === 1 ? 'y' : 'ies'}. Download new QR codes from Camps.`, 'success');
             } catch (copyErr) {
               Swal.close();
               err(copyErr);
@@ -924,8 +924,9 @@
               if (!c.isConfirmed) return;
               try {
                 await PrsApi.regenerateCampToken(ctx.adminKey, b.closest('tr').dataset.campId);
-                toast('Token regenerated.', 'success');
+                toast('Token regenerated. Open QR to download the new code.', 'success');
                 reload();
+                showCampQr(b.closest('tr').dataset.campId);
               } catch (e) { err(e); }
             }));
             tbody.querySelectorAll('.prs-camp-del').forEach(b => b.addEventListener('click', async () => {
@@ -958,7 +959,7 @@
       const confirm = await Swal.fire({
         icon: 'question',
         title: 'Copy camp locations?',
-        text: 'Camp name, state, GPS coordinates and radius will be copied. Matching camps (same name + state) in this event are reused instead of duplicated. Each new camp gets a fresh QR token.',
+        text: 'Camp name, state, GPS coordinates and radius will be copied. Each camp gets a new QR code and token. Old QR codes from the previous event will not work.',
         showCancelButton: true,
         confirmButtonText: 'Copy camps',
       });
@@ -968,7 +969,7 @@
         const res = await PrsApi.copyCampsFromEvent(ctx.adminKey, {
           sourceEventId,
           targetEventId,
-          skipExisting: true,
+          skipExisting: false,
         });
         Swal.close();
         const d = (res && res.data) || {};

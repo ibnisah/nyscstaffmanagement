@@ -275,12 +275,12 @@
         });
       }
 
-      // ---- State from QR URL ----
-      const eventId = qs('eventId');
-      const campId  = qs('campId');
-      const token   = qs('token');
+      // ---- State from QR URL (token is authoritative; event/camp may be corrected by server) ----
+      let eventId = qs('eventId');
+      let campId  = qs('campId');
+      let token   = qs('token') || qs('t');
 
-      if (!eventId || !campId || !token) {
+      if (!token) {
         showStep('stepLoading');
         setStatus('loadingStatus', 'This QR code is incomplete or malformed. Please scan the camp QR again.', 'error');
         return;
@@ -324,14 +324,41 @@
         return map[c] || (code ? String(code).replace(/_/g, ' ') : '');
       }
 
-      // ---- Step 1: validate QR ----
+      function apiPayload(extra) {
+        return Object.assign({ eventId, campId, token }, extra || {});
+      }
+
+      // ---- Step 1: validate QR + camp proximity before opening phone form ----
       async function validate() {
         try {
           setStatus('loadingStatus', 'Validating QR code…');
-          const res = await Prs.Staff.validateQr({ eventId, campId, token });
-          campInfo = (res && res.data && res.data.camp) || null;
-          eventInfo = (res && res.data && res.data.event) || null;
+          let res = await Prs.Staff.validateQr(apiPayload());
+          let data = (res && res.data) || {};
+          if (data.canonical) {
+            eventId = data.canonical.eventId || eventId;
+            campId = data.canonical.campId || campId;
+            token = data.canonical.token || token;
+          } else {
+            if (data.event && data.event.eventId) eventId = data.event.eventId;
+            if (data.camp && data.camp.campId) campId = data.camp.campId;
+          }
+
+          setStatus('loadingStatus', 'Checking your location…');
+          const pos = await getGps();
+          res = await Prs.Staff.validateQr(apiPayload({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || null,
+          }));
+          data = (res && res.data) || {};
+          campInfo = data.camp || null;
+          eventInfo = data.event || null;
           if (!campInfo || !eventInfo) throw new Error('Invalid response from server.');
+          if (data.canonical) {
+            eventId = data.canonical.eventId || eventId;
+            campId = data.canonical.campId || campId;
+            token = data.canonical.token || token;
+          }
 
           document.getElementById('campHeaderName').textContent = campInfo.campName || 'Camp';
           document.getElementById('campHeaderMeta').textContent =
@@ -353,7 +380,7 @@
       async function lookupPhone(phone) {
         try {
           setStatus('phoneStatus', 'Looking up your assignment…');
-          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone });
+          const res = await Prs.Staff.listStaffAssignments(apiPayload({ phone }));
           const list = (res && res.data && res.data.assignments) || [];
           if (!list.length) {
             setStatus('phoneStatus', 'This phone number is not assigned to any activity at this camp.', 'error');
@@ -401,10 +428,10 @@
       async function resolvePhoneAndShowDashboard(phone, assignmentId) {
         try {
           setStatus('phoneStatus', 'Loading your dashboard…');
-          const res = await Prs.Staff.getStaffDashboard({
-            eventId, campId, token, phone,
+          const res = await Prs.Staff.getStaffDashboard(apiPayload({
+            phone,
             assignmentId: assignmentId || chosenAssignmentId || '',
-          });
+          }));
           const d = (res && res.data) || {};
           assignment = d.assignment;
           if (assignment && assignment.assignmentId) chosenAssignmentId = assignment.assignmentId;
@@ -532,7 +559,7 @@
         const btn = document.getElementById('switchAssignmentBtn');
         if (!btn) return;
         try {
-          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone });
+          const res = await Prs.Staff.listStaffAssignments(apiPayload({ phone }));
           const list = (res && res.data && res.data.assignments) || [];
           btn.style.display = list.length > 1 ? 'block' : 'none';
         } catch (e) {
@@ -550,11 +577,10 @@
           return;
         }
         try {
-          const res = await Prs.Staff.listStaffMaterials({
-            eventId, campId, token,
+          const res = await Prs.Staff.listStaffMaterials(apiPayload({
             phone: currentPhone,
             assignmentId: assignment.assignmentId,
-          });
+          }));
           const mats = (res && res.data && res.data.materials) || [];
           if (!mats.length) {
             section.style.display = 'none';
@@ -599,13 +625,12 @@
         btn.disabled = true;
         btn.textContent = 'Preparing…';
         try {
-          await Prs.Staff.logMaterialDownload({
-            eventId, campId, token,
+          await Prs.Staff.logMaterialDownload(apiPayload({
             phone: currentPhone,
             assignmentId: assignment.assignmentId,
             materialId: materialId,
             channel: 'QR_PAGE',
-          });
+          }));
           if (url) {
             // Open in a new tab so we don't unload the staff's dashboard.
             window.open(url, '_blank', 'noopener');
@@ -634,14 +659,13 @@
           btn.textContent = 'Submitting…';
           setStatus('dashStatus', 'Submitting…');
 
-          const payload = {
-            eventId, campId, token,
+          const payload = apiPayload({
             phone: currentPhone,
             assignmentId: chosenAssignmentId || (assignment && assignment.assignmentId) || '',
             latitude: pos.coords.latitude,
             longitude: pos.coords.longitude,
             accuracy: pos.coords.accuracy || null,
-          };
+          });
 
           const action = kind === 'SIGN_IN' ? Prs.Staff.signIn : Prs.Staff.signOut;
           const res = await action(payload);
@@ -693,7 +717,7 @@
         }
         try {
           setStatus('phoneStatus', '');
-          const res = await Prs.Staff.listStaffAssignments({ eventId, campId, token, phone: currentPhone });
+          const res = await Prs.Staff.listStaffAssignments(apiPayload({ phone: currentPhone }));
           const list = (res && res.data && res.data.assignments) || [];
           if (list.length <= 1) {
             Swal.fire({ icon: 'info', title: 'Only one assignment', text: 'You only have one assignment at this camp.' });
