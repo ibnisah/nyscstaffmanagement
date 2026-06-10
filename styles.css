@@ -671,6 +671,371 @@ img { max-width: 100%; display: block; }
     }
 }
 
+/* PRS — camp picker cards (activity create/edit) */
+.prs-camp-picker-host {
+    width: 100%;
+    text-align: left;
+}
+.prs-camp-picker-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.prs-camp-picker-count {
+    margin-left: auto;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.prs-camp-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+.prs-camp-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 2px solid rgba(5, 150, 105, 0.18);
+    border-radius: var(--radius-lg, 12px);
+    background: linear-gradient(145deg, #f8fffb 0%, #ffffff 70%);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color var(--t-base, 0.2s) ease, box-shadow var(--t-base, 0.2s) ease, transform var(--t-base, 0.2s) ease;
+    min-height: 72px;
+    position: relative;
+}
+.prs-camp-card:hover {
+    border-color: rgba(5, 150, 105, 0.45);
+    box-shadow: var(--shadow, 0 4px 14px rgba(0,0,0,0.06));
+    transform: translateY(-1px);
+}
+.prs-camp-card--selected {
+    border-color: var(--nysc-green, #059669);
+    background: linear-gradient(145deg, #ecfdf5 0%, #ffffff 65%);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+}
+.prs-camp-card input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+.prs-camp-card-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.prs-camp-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 1;
+}
+.prs-camp-card-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--ink, #111827);
+    line-height: 1.25;
+}
+.prs-camp-card-state {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.prs-camp-card-check {
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 50%;
+    border: 2px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: transparent;
+    flex-shrink: 0;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.prs-camp-card--selected .prs-camp-card-check {
+    background: var(--nysc-green, #059669);
+    border-color: var(--nysc-green, #059669);
+    color: #fff;
+}
+
+/* PRS — attendance filter bar + panels */
+.prs-attendance-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+}
+.prs-filter-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.85rem 1rem;
+    align-items: end;
+    padding: 1rem 1.1rem;
+    background: linear-gradient(145deg, #f4fdf8 0%, #ffffff 80%);
+    border: 1px solid rgba(5, 150, 105, 0.14);
+    border-radius: var(--radius-lg, 12px);
+    margin-bottom: 1.25rem;
+}
+.prs-filter-field label {
+    display: block;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 0.35rem;
+}
+.prs-filter-select,
+.prs-filter-input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    background: #fff;
+}
+.prs-filter-select:focus,
+.prs-filter-input:focus {
+    outline: none;
+    border-color: var(--nysc-green, #059669);
+    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+}
+.prs-filter-actions {
+    display: flex;
+    align-items: flex-end;
+}
+.prs-attendance-tabs {
+    margin: 0.5rem 0 1rem;
+}
+.prs-attendance-body {
+    min-height: 120px;
+}
+.prs-attendance-stats {
+    margin-bottom: 1rem;
+}
+.prs-stat-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+.prs-log-staff {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.prs-log-staff span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.prs-log-time {
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+/* PRS — statistics view */
+.prs-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+.prs-stats-card {
+    padding: 1.1rem 1.15rem;
+    border: 1px solid rgba(5, 150, 105, 0.14);
+    border-radius: var(--radius-lg, 12px);
+    background: #fff;
+    box-shadow: var(--shadow-pop, 0 2px 8px rgba(0,0,0,0.04));
+}
+.prs-stats-card--wide {
+    grid-column: 1 / -1;
+}
+.prs-stats-card h3 {
+    margin: 0 0 0.85rem;
+    font-size: 0.9rem;
+    color: #334155;
+}
+.prs-stats-bar-row {
+    display: grid;
+    grid-template-columns: minmax(80px, 1fr) 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.55rem;
+    font-size: 0.85rem;
+}
+.prs-mini-bar {
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.prs-mini-bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, #059669, #34d399);
+    border-radius: 999px;
+    min-width: 4px;
+}
+.prs-hour-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.35rem;
+    min-height: 140px;
+    padding-top: 0.5rem;
+    overflow-x: auto;
+}
+.prs-hour-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 36px;
+    min-width: 36px;
+}
+.prs-hour-bar {
+    width: 100%;
+    max-width: 28px;
+    background: linear-gradient(180deg, #34d399, #059669);
+    border-radius: 6px 6px 2px 2px;
+    min-height: 8px;
+}
+.prs-hour-col span {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* PRS — daily summary */
+.prs-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.prs-summary-hero {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1.25rem;
+    align-items: start;
+    margin-bottom: 1.25rem;
+}
+.prs-rate-ring {
+    --rate: 0;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: conic-gradient(
+        #059669 calc(var(--rate) * 1%),
+        #e5e7eb 0
+    );
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.15);
+}
+.prs-rate-ring::before {
+    content: '';
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background: #fff;
+}
+.prs-rate-ring-value,
+.prs-rate-ring-label {
+    position: relative;
+    z-index: 1;
+}
+.prs-rate-ring-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #047857;
+    line-height: 1.1;
+}
+.prs-rate-ring-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prs-summary-staff-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+.prs-summary-staff-col h3 {
+    margin: 0 0 0.65rem;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.prs-staff-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+.prs-staff-chip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    font-size: 0.88rem;
+}
+.prs-staff-chip strong {
+    display: block;
+    margin-bottom: 0.1rem;
+}
+.prs-staff-chip span {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+.prs-staff-chip--present {
+    border-left: 3px solid #059669;
+}
+.prs-staff-chip--absent {
+    border-left: 3px solid #f59e0b;
+    background: #fffbeb;
+}
+
+@media (max-width: 768px) {
+    .prs-camp-picker {
+        grid-template-columns: 1fr;
+    }
+    .prs-camp-picker-count {
+        margin-left: 0;
+        width: 100%;
+    }
+    .prs-summary-hero {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        text-align: center;
+    }
+    .prs-filter-actions .btn {
+        width: 100%;
+    }
+    .prs-attendance-head .btn {
+        width: 100%;
+    }
+}
+
 .subtitle {
     margin-top: -0.25rem;
     margin-bottom: 1.5rem;

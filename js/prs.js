@@ -101,9 +101,10 @@
     listAssignments:  (key, eventId, campId) => call('prsListAssignments', {
       key, eventId, campId: campId || ''
     }),
-    downloadAssignmentsExcel: (key, eventId) => call('prsDownloadAssignmentsExcel', {
+    downloadAssignmentsExcel: (key, eventId, assignmentDefId) => call('prsDownloadAssignmentsExcel', {
       key,
       eventId,
+      assignmentDefId: assignmentDefId || '',
     }),
 
     // ---- Dashboard ----
@@ -187,6 +188,110 @@
   async function loadAllEvents() {
     const res = await PrsApi.listEvents(ctx.adminKey, '');
     return (res && res.data && res.data.events) || [];
+  }
+
+  async function loadActivitiesForEvent(eventId) {
+    if (!eventId) return [];
+    const r = await PrsApi.listAssignmentDefs(ctx.adminKey, eventId, '');
+    return (r && r.data && r.data.assignmentDefs) || [];
+  }
+
+  /** Large, touch-friendly camp picker cards (create/edit activity + camps tab). */
+  function campPickerHtml(camps, selectedIds, inputClass) {
+    const selected = new Set((selectedIds || []).map(String));
+    if (!camps.length) {
+      return '<p class="info info-muted">No camps in this event yet. Add camps under the Camps tab first.</p>';
+    }
+    return `
+      <div class="prs-camp-picker-toolbar">
+        <button type="button" class="btn btn-xs btn-secondary prs-camp-select-all">Select all</button>
+        <button type="button" class="btn btn-xs btn-secondary prs-camp-clear-all">Clear all</button>
+        <span class="prs-camp-picker-count" aria-live="polite"></span>
+      </div>
+      <div class="prs-camp-picker">
+        ${camps.map(c => {
+          const sel = selected.has(String(c.campId));
+          return `
+            <label class="prs-camp-card${sel ? ' prs-camp-card--selected' : ''}" data-camp-id="${esc(c.campId)}">
+              <input type="checkbox" class="${esc(inputClass)}" value="${esc(c.campId)}" ${sel ? 'checked' : ''} />
+              <span class="prs-camp-card-icon" aria-hidden="true">🏕️</span>
+              <span class="prs-camp-card-body">
+                <span class="prs-camp-card-name">${esc(c.campName)}</span>
+                <span class="prs-camp-card-state">${esc(c.state)}</span>
+              </span>
+              <span class="prs-camp-card-check" aria-hidden="true">✓</span>
+            </label>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function wireCampPicker(root) {
+    if (!root) return;
+    const updateCount = () => {
+      const checked = root.querySelectorAll('input[type="checkbox"]:checked').length;
+      const total = root.querySelectorAll('input[type="checkbox"]').length;
+      const countEl = root.querySelector('.prs-camp-picker-count');
+      if (countEl) countEl.textContent = `${checked} of ${total} camp${total === 1 ? '' : 's'} selected`;
+    };
+    root.querySelectorAll('.prs-camp-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        const cb = card.querySelector('input[type="checkbox"]');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        card.classList.toggle('prs-camp-card--selected', cb.checked);
+        updateCount();
+      });
+    });
+    root.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const card = cb.closest('.prs-camp-card');
+        if (card) card.classList.toggle('prs-camp-card--selected', cb.checked);
+        updateCount();
+      });
+    });
+    const selectAll = root.querySelector('.prs-camp-select-all');
+    const clearAll = root.querySelector('.prs-camp-clear-all');
+    if (selectAll) {
+      selectAll.addEventListener('click', (e) => {
+        e.preventDefault();
+        root.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = true;
+          const card = cb.closest('.prs-camp-card');
+          if (card) card.classList.add('prs-camp-card--selected');
+        });
+        updateCount();
+      });
+    }
+    if (clearAll) {
+      clearAll.addEventListener('click', (e) => {
+        e.preventDefault();
+        root.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = false;
+          const card = cb.closest('.prs-camp-card');
+          if (card) card.classList.remove('prs-camp-card--selected');
+        });
+        updateCount();
+      });
+    }
+    updateCount();
+  }
+
+  function prsStatCardsHtml(stats) {
+    const items = stats || [];
+    return `
+      <div class="dashboard-stats prs-attendance-stats">
+        ${items.map(s => `
+          <div class="stat-card prs-stat-card--${esc(s.tone || 'default')}">
+            <div class="stat-value">${esc(s.value)}</div>
+            <div class="stat-label">${esc(s.label)}</div>
+            ${s.hint ? `<div class="prs-stat-hint">${esc(s.hint)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   async function pickSourceEvent(events, excludeEventId, title) {
@@ -1321,19 +1426,12 @@
     const modeOpts = PRS_ATTENDANCE_MODES.map(m =>
       `<option value="${esc(m.value)}" ${existing && existing.attendanceMode === m.value ? 'selected' : ''}>${esc(m.label)}</option>`
     ).join('');
-    const linkedCampIds = isEdit ? new Set((existing.camps || []).map(c => String(c.campId))) : new Set();
-    const campsHtml = camps.length
-      ? camps.map(c => `
-          <label style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.5rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">
-            <input type="checkbox" class="prs-def-camp" value="${esc(c.campId)}" ${linkedCampIds.has(String(c.campId)) ? 'checked' : ''} />
-            <span>${esc(c.campName)} — ${esc(c.state)}</span>
-          </label>
-        `).join('')
-      : '<p class="info info-muted">No camps in this event yet. Add one first.</p>';
+    const linkedCampIds = isEdit ? (existing.camps || []).map(c => c.campId) : [];
+    const campsHtml = campPickerHtml(camps, linkedCampIds, 'prs-def-camp');
 
     const { value } = await Swal.fire({
       title: isEdit ? 'Edit Activity' : 'New Activity',
-      width: 720,
+      width: 780,
       html: `
         <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Title</label>
         <input id="prsDefTitle" class="swal2-input" placeholder="e.g. Distribution of Kits Items"
@@ -1358,14 +1456,16 @@
             <input id="prsDefEnd" class="swal2-input" type="date" value="${esc(existing ? fmtDateOnly(existing.endDate) : '')}" />
           </div>
         </div>
-        <label style="display:block;text-align:left;margin:0.5rem 0 0.25rem 0;font-weight:600;">Run at camps</label>
-        <div id="prsDefCamps" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;text-align:left;">
+        <label style="display:block;text-align:left;margin:0.75rem 0 0.35rem 0;font-weight:600;">Run at camps</label>
+        <p style="text-align:left;font-size:0.85rem;color:var(--text-muted);margin:0 0 0.5rem;">Tap a camp card to select where this activity runs. You can pick multiple camps.</p>
+        <div id="prsDefCamps" class="prs-camp-picker-host">
           ${campsHtml}
         </div>
       `,
       focusConfirm: false,
       showCancelButton: true,
       confirmButtonText: isEdit ? 'Save' : 'Create',
+      didOpen: () => wireCampPicker(document.getElementById('prsDefCamps')),
       preConfirm: () => {
         const title = document.getElementById('prsDefTitle').value.trim();
         const description = document.getElementById('prsDefDesc').value.trim();
@@ -1686,21 +1786,15 @@ John Roe, 07045678901, Operations"></textarea>
 
   // ---- Sub-tab: Camps ----
   async function renderDefCamps(def, body, allCamps) {
+    const linkedIds = (def.camps || []).map(c => c.campId);
     body.innerHTML = `
-      <p class="info info-muted">Tick camps where this activity should run. Unticking removes the link (soft delete — roster/logs are preserved).</p>
-      <div id="prsDefCampGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem;margin-bottom:1rem;">
-        ${allCamps.length ? allCamps.map(c => {
-          const linked = (def.camps || []).some(x => String(x.campId) === String(c.campId));
-          return `
-            <label style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.6rem;border:1px solid #e5e7eb;border-radius:6px;background:#fff;">
-              <input type="checkbox" class="prs-def-detail-camp" value="${esc(c.campId)}" ${linked ? 'checked' : ''} />
-              <span><strong>${esc(c.campName)}</strong> — ${esc(c.state)}</span>
-            </label>
-          `;
-        }).join('') : '<p class="info info-muted">No camps in this event yet.</p>'}
+      <p class="info info-muted">Select camps where this activity should run. Removing a camp unlinks it (roster and attendance logs are preserved).</p>
+      <div id="prsDefCampGrid" class="prs-camp-picker-host">
+        ${campPickerHtml(allCamps, linkedIds, 'prs-def-detail-camp')}
       </div>
-      <button class="btn btn-primary" id="prsDefCampSaveBtn">Save camp links</button>
+      <button class="btn btn-primary" id="prsDefCampSaveBtn" style="margin-top:1rem;">Save camp links</button>
     `;
+    wireCampPicker(document.getElementById('prsDefCampGrid'));
     document.getElementById('prsDefCampSaveBtn').addEventListener('click', async () => {
       const desired = new Set(Array.from(document.querySelectorAll('.prs-def-detail-camp:checked')).map(el => el.value));
       const current = new Set((def.camps || []).map(c => String(c.campId)));
@@ -1898,79 +1992,260 @@ John Roe, 07045678901, Operations"></textarea>
   }
 
   // ---------------------------------------------------------------------------
-  // 2e. Attendance logs
+  // 2e. Attendance logs + statistics
   // ---------------------------------------------------------------------------
   async function renderLogs(container) {
     const evRes = await PrsApi.listEvents(ctx.adminKey, '');
     const events = (evRes && evRes.data && evRes.data.events) || [];
 
     container.innerHTML = `
-      <section class="card card-full-width">
-        <h2>Attendance Logs</h2>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem;">
-          <div style="flex:1;min-width:200px;">
-            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Event (optional)</label>
-            <select id="prsLogEvent" class="swal2-select" style="width:100%;padding:0.5rem;">
+      <section class="card card-full-width prs-attendance-panel">
+        <div class="prs-attendance-head">
+          <div>
+            <h2 style="margin:0;">Attendance</h2>
+            <p class="subtitle" style="margin:0.35rem 0 0;">View sign-in/out records and statistics by event and activity.</p>
+          </div>
+          <button class="btn btn-secondary" id="prsLogDownload" title="Download roster spreadsheet">⬇ Download</button>
+        </div>
+
+        <div class="prs-filter-bar">
+          <div class="prs-filter-field">
+            <label for="prsLogEvent">Event</label>
+            <select id="prsLogEvent" class="prs-filter-select">
               <option value="">All events</option>
               ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)}</option>`).join('')}
             </select>
           </div>
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Date (optional)</label>
-            <input type="date" id="prsLogDate" class="swal2-input" style="margin:0;" />
+          <div class="prs-filter-field">
+            <label for="prsLogActivity">Activity</label>
+            <select id="prsLogActivity" class="prs-filter-select" disabled>
+              <option value="">All activities</option>
+            </select>
           </div>
-          <button class="btn btn-secondary" id="prsLogRefresh">Refresh</button>
+          <div class="prs-filter-field prs-filter-field--date">
+            <label for="prsLogDate">Date</label>
+            <input type="date" id="prsLogDate" class="prs-filter-input" />
+          </div>
+          <div class="prs-filter-actions">
+            <button class="btn btn-primary" id="prsLogRefresh">Apply</button>
+          </div>
         </div>
-        <div class="table-wrapper" id="prsLogWrap"></div>
+
+        <div id="prsLogStats"></div>
+
+        <div class="prs-attendance-tabs contextual-actions" id="prsLogTabs">
+          <button type="button" class="action-btn active" data-log-tab="records"><span>📋 Records</span></button>
+          <button type="button" class="action-btn" data-log-tab="stats"><span>📊 Statistics</span></button>
+        </div>
+
+        <div id="prsLogWrap" class="prs-attendance-body"></div>
       </section>
     `;
 
     const evSel = document.getElementById('prsLogEvent');
+    const actSel = document.getElementById('prsLogActivity');
     const dtSel = document.getElementById('prsLogDate');
     const wrap = document.getElementById('prsLogWrap');
+    const statsEl = document.getElementById('prsLogStats');
+    const tabsEl = document.getElementById('prsLogTabs');
+    let activeTab = 'records';
+    let lastRows = [];
 
     const campLabelFor = l => l.campName
       ? (l.campState ? `${l.campName} (${l.campState})` : l.campName)
       : '— (camp removed)';
     const eventLabelFor = l => l.eventName || '— (event removed)';
 
+    async function refreshActivityFilter() {
+      const eventId = evSel.value;
+      actSel.innerHTML = '<option value="">All activities</option>';
+      if (!eventId) {
+        actSel.disabled = true;
+        return;
+      }
+      actSel.disabled = false;
+      try {
+        const defs = await loadActivitiesForEvent(eventId);
+        actSel.innerHTML = '<option value="">All activities</option>' +
+          defs.map(d => `<option value="${esc(d.assignmentDefId)}">${esc(d.title)}</option>`).join('');
+      } catch (e) { /* ignore */ }
+    }
+
+    function computeQuickStats(rows) {
+      const signIns = rows.filter(r => r.action === 'SIGN_IN').length;
+      const signOuts = rows.filter(r => r.action === 'SIGN_OUT').length;
+      const staffSet = new Set(rows.map(r => r.phone).filter(Boolean));
+      const campSet = new Set(rows.map(r => r.campId).filter(Boolean));
+      return { signIns, signOuts, uniqueStaff: staffSet.size, camps: campSet.size, total: rows.length };
+    }
+
+    function renderQuickStats(rows) {
+      const s = computeQuickStats(rows);
+      statsEl.innerHTML = prsStatCardsHtml([
+        { value: s.total, label: 'Total records', hint: 'Matching current filters' },
+        { value: s.signIns, label: 'Sign-ins', tone: 'success' },
+        { value: s.signOuts, label: 'Sign-outs', tone: 'info' },
+        { value: s.uniqueStaff, label: 'Unique staff', tone: 'muted' },
+      ]);
+    }
+
+    function renderRecordsTable(rows) {
+      wrap.innerHTML = '<div id="prsLogsViewWrap"></div>';
+      paginatedTableView({
+        wrap: document.getElementById('prsLogsViewWrap'),
+        rows: rows,
+        searchPlaceholder: 'Search by staff, phone, activity, camp or action…',
+        emptyText: 'No attendance records match your filters.',
+        searchFields: l => [
+          l.staffName, l.phone, l.action, l.campName, l.campState, l.eventName,
+          l.activityTitle, campLabelFor(l), eventLabelFor(l),
+        ].filter(Boolean).join(' '),
+        columns: [
+          { label: 'When', render: l => `<span class="prs-log-time">${esc(fmtDate(l.timestamp))}</span>` },
+          { label: 'Action', render: l => `<span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span>` },
+          { label: 'Staff', render: l => `<div class="prs-log-staff"><strong>${esc(l.staffName || '—')}</strong><span>${esc(l.phone)}</span></div>` },
+          { label: 'Activity', render: l => esc(l.activityTitle || '—') },
+          { label: 'Camp', render: l => esc(campLabelFor(l)) },
+          { label: 'Event', render: l => esc(eventLabelFor(l)) },
+        ],
+      });
+    }
+
+    function renderStatsView(rows) {
+      const byAction = { SIGN_IN: 0, SIGN_OUT: 0 };
+      const byCamp = {};
+      const byHour = {};
+      rows.forEach(r => {
+        const act = String(r.action || '').toUpperCase();
+        if (byAction[act] != null) byAction[act]++;
+        const campKey = campLabelFor(r);
+        byCamp[campKey] = (byCamp[campKey] || 0) + 1;
+        if (r.timestamp) {
+          const d = new Date(r.timestamp);
+          if (!isNaN(d.getTime())) {
+            const h = d.getHours();
+            const label = d.toLocaleTimeString(undefined, { hour: 'numeric', hour12: true });
+            byHour[label] = (byHour[label] || 0) + 1;
+          }
+        }
+      });
+      const campEntries = Object.entries(byCamp).sort((a, b) => b[1] - a[1]);
+      const maxCamp = campEntries.length ? campEntries[0][1] : 1;
+      const hourEntries = Object.entries(byHour).sort((a, b) => {
+        const pa = Date.parse('1/1/2000 ' + a[0]);
+        const pb = Date.parse('1/1/2000 ' + b[0]);
+        return (isNaN(pa) ? 0 : pa) - (isNaN(pb) ? 0 : pb);
+      });
+
+      wrap.innerHTML = `
+        <div class="prs-stats-grid">
+          <div class="prs-stats-card">
+            <h3>Actions breakdown</h3>
+            <div class="prs-stats-bars">
+              <div class="prs-stats-bar-row">
+                <span>Sign-in</span>
+                <div class="prs-mini-bar"><div style="width:${rows.length ? Math.round(byAction.SIGN_IN / rows.length * 100) : 0}%"></div></div>
+                <strong>${byAction.SIGN_IN}</strong>
+              </div>
+              <div class="prs-stats-bar-row">
+                <span>Sign-out</span>
+                <div class="prs-mini-bar"><div style="width:${rows.length ? Math.round(byAction.SIGN_OUT / rows.length * 100) : 0}%"></div></div>
+                <strong>${byAction.SIGN_OUT}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="prs-stats-card">
+            <h3>By camp</h3>
+            ${campEntries.length ? campEntries.slice(0, 8).map(([name, count]) => `
+              <div class="prs-stats-bar-row">
+                <span title="${esc(name)}">${esc(name.length > 28 ? name.slice(0, 28) + '…' : name)}</span>
+                <div class="prs-mini-bar"><div style="width:${Math.round(count / maxCamp * 100)}%"></div></div>
+                <strong>${count}</strong>
+              </div>
+            `).join('') : '<p class="info info-muted">No camp data for current filters.</p>'}
+          </div>
+          <div class="prs-stats-card prs-stats-card--wide">
+            <h3>Activity by time of day</h3>
+            ${hourEntries.length ? `
+              <div class="prs-hour-chart">
+                ${hourEntries.map(([label, count]) => {
+                  const maxH = Math.max(...hourEntries.map(e => e[1]), 1);
+                  return `<div class="prs-hour-col" title="${esc(label)}: ${count}">
+                    <div class="prs-hour-bar" style="height:${Math.max(8, Math.round(count / maxH * 100))}%"></div>
+                    <span>${esc(label.replace(/:.*$/, ''))}</span>
+                  </div>`;
+                }).join('')}
+              </div>
+            ` : '<p class="info info-muted">No timestamp data for current filters.</p>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderActiveTab() {
+      if (activeTab === 'stats') renderStatsView(lastRows);
+      else renderRecordsTable(lastRows);
+    }
+
     async function reload() {
-      wrap.innerHTML = '<div class="info info-muted">Loading…</div>';
+      wrap.innerHTML = '<div class="info info-muted">Loading attendance…</div>';
+      statsEl.innerHTML = '';
       try {
         const r = await PrsApi.getAttendanceLogs(ctx.adminKey, {
           eventId: evSel.value || '',
+          assignmentDefId: actSel.value || '',
           dateStr: dtSel.value || '',
           limit: 500,
         });
-        const rows = (r && r.data && r.data.logs) || [];
-        wrap.innerHTML = '<div id="prsLogsViewWrap"></div>';
-
-        paginatedTableView({
-          wrap: document.getElementById('prsLogsViewWrap'),
-          rows: rows,
-          searchPlaceholder: 'Search by staff name, phone, camp, event or action…',
-          emptyText: 'No logs.',
-          searchFields: l => [
-            l.staffName, l.phone, l.action, l.campName, l.campState, l.eventName,
-            campLabelFor(l), eventLabelFor(l),
-          ].filter(Boolean).join(' '),
-          columns: [
-            { label: 'When',   render: l => esc(fmtDate(l.timestamp)) },
-            { label: 'Action', render: l => `<span class="badge badge-${l.action === 'SIGN_IN' ? 'success' : 'muted'}">${esc(l.action)}</span>` },
-            { label: 'Staff',  render: l => esc(l.staffName || '') },
-            { label: 'Phone',  render: l => esc(l.phone) },
-            { label: 'Camp',   render: l => esc(campLabelFor(l)) },
-            { label: 'Event',  render: l => esc(eventLabelFor(l)) },
-          ],
-        });
+        lastRows = (r && r.data && r.data.logs) || [];
+        renderQuickStats(lastRows);
+        renderActiveTab();
       } catch (e) {
         wrap.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
     }
 
+    tabsEl.querySelectorAll('[data-log-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.getAttribute('data-log-tab');
+        tabsEl.querySelectorAll('[data-log-tab]').forEach(b => b.classList.toggle('active', b === btn));
+        renderActiveTab();
+      });
+    });
+
+    document.getElementById('prsLogDownload').addEventListener('click', async () => {
+      const eventId = evSel.value;
+      if (!eventId) return toast('Select an event to download roster records.', 'info');
+      try {
+        const res = await PrsApi.downloadAssignmentsExcel(ctx.adminKey, eventId, actSel.value || '');
+        const data = (res && res.data) || {};
+        if (data.fileBase64) {
+          downloadBase64File(
+            data.fileBase64,
+            data.fileName || 'prs_assignments.xlsx',
+            data.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
+        } else if (data.downloadUrl) {
+          const a = document.createElement('a');
+          a.href = data.downloadUrl; a.target = '_blank'; a.rel = 'noopener';
+          a.download = data.fileName || 'prs_assignments.xlsx';
+          a.click();
+        } else {
+          throw new Error('Could not generate spreadsheet for download.');
+        }
+        toast('Spreadsheet ready — download starting…', 'success');
+      } catch (e) { err(e); }
+    });
+
     document.getElementById('prsLogRefresh').addEventListener('click', reload);
-    evSel.addEventListener('change', reload);
+    evSel.addEventListener('change', async () => {
+      await refreshActivityFilter();
+      reload();
+    });
+    actSel.addEventListener('change', reload);
     dtSel.addEventListener('change', reload);
+
+    await refreshActivityFilter();
     reload();
   }
 
@@ -1986,53 +2261,177 @@ John Roe, 07045678901, Operations"></textarea>
     }
 
     container.innerHTML = `
-      <section class="card card-full-width">
-        <h2>Daily Summary</h2>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem;">
-          <div style="flex:1;min-width:200px;">
-            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Event</label>
-            <select id="prsSumEvent" class="swal2-select" style="width:100%;padding:0.5rem;">
+      <section class="card card-full-width prs-summary-panel">
+        <div class="prs-attendance-head">
+          <div>
+            <h2 style="margin:0;">Daily Summary</h2>
+            <p class="subtitle" style="margin:0.35rem 0 0;">Attendance snapshot for an event or a specific activity on a given day.</p>
+          </div>
+          <button class="btn btn-secondary" id="prsSumDownload">⬇ Download roster</button>
+        </div>
+
+        <div class="prs-filter-bar">
+          <div class="prs-filter-field">
+            <label for="prsSumEvent">Event</label>
+            <select id="prsSumEvent" class="prs-filter-select">
               ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)}</option>`).join('')}
             </select>
           </div>
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:0.25rem;">Date (defaults to today)</label>
-            <input type="date" id="prsSumDate" class="swal2-input" style="margin:0;" />
+          <div class="prs-filter-field">
+            <label for="prsSumActivity">Activity</label>
+            <select id="prsSumActivity" class="prs-filter-select">
+              <option value="">All activities</option>
+            </select>
           </div>
-          <button class="btn btn-secondary" id="prsSumRefresh">Compute</button>
+          <div class="prs-filter-field prs-filter-field--date">
+            <label for="prsSumDate">Date</label>
+            <input type="date" id="prsSumDate" class="prs-filter-input" />
+          </div>
+          <div class="prs-filter-actions">
+            <button class="btn btn-primary" id="prsSumRefresh">Compute</button>
+          </div>
         </div>
+
         <div id="prsSumResult"></div>
       </section>
     `;
 
     const evSel = document.getElementById('prsSumEvent');
+    const actSel = document.getElementById('prsSumActivity');
     const dtSel = document.getElementById('prsSumDate');
     const out = document.getElementById('prsSumResult');
 
+    async function refreshActivityFilter() {
+      const defs = await loadActivitiesForEvent(evSel.value);
+      actSel.innerHTML = '<option value="">All activities</option>' +
+        defs.map(d => `<option value="${esc(d.assignmentDefId)}">${esc(d.title)}</option>`).join('');
+    }
+
     async function reload() {
-      out.innerHTML = '<div class="info info-muted">Computing…</div>';
+      out.innerHTML = '<div class="info info-muted">Computing summary…</div>';
       try {
         const r = await PrsApi.getDailySummary(ctx.adminKey, {
           eventId: evSel.value,
+          assignmentDefId: actSel.value || '',
           dateStr: dtSel.value || '',
         });
         const d = (r && r.data) || {};
+        const staff = d.staff || [];
+        const presentStaff = staff.filter(s => s.status === 'PRESENT');
+        const absentStaff = staff.filter(s => s.status === 'ABSENT');
+
         out.innerHTML = `
-          <div class="dashboard-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;">
-            <div class="stat-card"><div class="stat-value">${d.totalAssigned || 0}</div><div class="stat-label">Assigned</div></div>
-            <div class="stat-card"><div class="stat-value">${d.present || 0}</div><div class="stat-label">Present</div></div>
-            <div class="stat-card"><div class="stat-value">${d.absent || 0}</div><div class="stat-label">Absent</div></div>
-            <div class="stat-card"><div class="stat-value">${d.completedDays || 0}</div><div class="stat-label">Completed Days</div></div>
+          <div class="prs-summary-meta">
+            <span class="badge badge-info">${esc(d.dateStr || '')}</span>
+            ${d.activityTitle
+              ? `<span class="badge badge-muted">Activity: ${esc(d.activityTitle)}</span>`
+              : '<span class="badge badge-muted">All activities</span>'}
           </div>
-          <p class="info info-muted" style="margin-top:1rem;">Date: ${esc(d.dateStr || '')}</p>
+
+          <div class="prs-summary-hero">
+            <div class="prs-summary-rate">
+              <div class="prs-rate-ring" style="--rate:${d.attendanceRate || 0};" aria-label="${d.attendanceRate || 0}% present">
+                <span class="prs-rate-ring-value">${d.attendanceRate || 0}%</span>
+                <span class="prs-rate-ring-label">Present</span>
+              </div>
+            </div>
+            ${prsStatCardsHtml([
+              { value: d.totalAssigned || 0, label: 'Assigned staff' },
+              { value: d.present || 0, label: 'Present today', tone: 'success' },
+              { value: d.absent || 0, label: 'Absent today', tone: 'warning' },
+              { value: d.completedDays || 0, label: 'Day completed', tone: 'info' },
+              { value: d.signIns || 0, label: 'Sign-ins' },
+              { value: d.signOuts || 0, label: 'Sign-outs' },
+            ])}
+          </div>
+
+          <div class="prs-summary-staff-grid">
+            <div class="prs-summary-staff-col">
+              <h3>Present <span class="badge badge-success">${presentStaff.length}</span></h3>
+              <div class="prs-staff-list">
+                ${presentStaff.length ? presentStaff.map(s => `
+                  <div class="prs-staff-chip prs-staff-chip--present">
+                    <div>
+                      <strong>${esc(s.staffName)}</strong>
+                      <span>${esc(s.phone)} · ${esc(s.campName || '—')}</span>
+                    </div>
+                    <span class="badge badge-${s.signedOut ? 'success' : 'muted'}">${s.signedOut ? 'Out' : 'In'}</span>
+                  </div>
+                `).join('') : '<p class="info info-muted">No one signed in yet for this date.</p>'}
+              </div>
+            </div>
+            <div class="prs-summary-staff-col">
+              <h3>Absent <span class="badge badge-warning">${absentStaff.length}</span></h3>
+              <div class="prs-staff-list">
+                ${absentStaff.length ? absentStaff.map(s => `
+                  <div class="prs-staff-chip prs-staff-chip--absent">
+                    <div>
+                      <strong>${esc(s.staffName)}</strong>
+                      <span>${esc(s.phone)} · ${esc(s.campName || '—')}</span>
+                    </div>
+                  </div>
+                `).join('') : '<p class="info info-muted">Everyone assigned was present.</p>'}
+              </div>
+            </div>
+          </div>
+
+          <div class="table-wrapper" style="margin-top:1.25rem;">
+            <div id="prsSumStaffTable"></div>
+          </div>
         `;
+
+        paginatedTableView({
+          wrap: document.getElementById('prsSumStaffTable'),
+          rows: staff,
+          searchPlaceholder: 'Search staff by name, phone, camp or status…',
+          emptyText: 'No roster entries for this filter.',
+          searchFields: s => [s.staffName, s.phone, s.campName, s.campState, s.status, s.department].filter(Boolean).join(' '),
+          columns: [
+            { label: 'Staff', render: s => `<strong>${esc(s.staffName)}</strong><div style="font-size:0.8rem;color:var(--text-muted);">${esc(s.phone)}</div>` },
+            { label: 'Camp', render: s => esc((s.campName || '—') + (s.campState ? ' (' + s.campState + ')' : '')) },
+            { label: 'Department', render: s => esc(s.department || '—') },
+            { label: 'Status', render: s => `<span class="badge badge-${s.status === 'PRESENT' ? 'success' : 'warning'}">${esc(s.status)}</span>` },
+            { label: 'Sign-in', render: s => s.signedIn ? '✓' : '—' },
+            { label: 'Sign-out', render: s => s.signedOut ? '✓' : '—' },
+            { label: 'Day done', render: s => s.dayCompleted ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-muted">No</span>' },
+          ],
+        });
       } catch (e) {
         out.innerHTML = `<div class="info info-error">${esc(e.message)}</div>`;
       }
     }
 
+    document.getElementById('prsSumDownload').addEventListener('click', async () => {
+      try {
+        const res = await PrsApi.downloadAssignmentsExcel(ctx.adminKey, evSel.value, actSel.value || '');
+        const data = (res && res.data) || {};
+        if (data.fileBase64) {
+          downloadBase64File(
+            data.fileBase64,
+            data.fileName || 'prs_assignments.xlsx',
+            data.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
+        } else if (data.downloadUrl) {
+          const a = document.createElement('a');
+          a.href = data.downloadUrl; a.target = '_blank'; a.rel = 'noopener';
+          a.download = data.fileName || 'prs_assignments.xlsx';
+          a.click();
+        } else {
+          throw new Error('Could not generate spreadsheet for download.');
+        }
+        toast('Spreadsheet ready — download starting…', 'success');
+      } catch (e) { err(e); }
+    });
+
     document.getElementById('prsSumRefresh').addEventListener('click', reload);
-    evSel.addEventListener('change', reload);
+    evSel.addEventListener('change', async () => {
+      await refreshActivityFilter();
+      reload();
+    });
+    actSel.addEventListener('change', reload);
+    dtSel.addEventListener('change', reload);
+
+    await refreshActivityFilter();
     reload();
   }
 
