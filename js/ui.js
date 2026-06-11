@@ -9403,17 +9403,23 @@ const AdminPage = (function () {
           The record written is structurally identical to a staff-scanned entry — no other admin sees any difference.
         </p>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:1.25rem;">
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Event</label>
-            <select id="sysMarkEvent" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+        <div class="prs-filter-bar" style="margin-bottom:1.25rem;">
+          <div class="prs-filter-field">
+            <label for="sysMarkEvent">Event</label>
+            <select id="sysMarkEvent" class="prs-filter-select">
               <option value="">Select event…</option>
               ${events.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)}</option>`).join('')}
             </select>
           </div>
-          <div>
-            <label style="display:block;font-weight:600;margin-bottom:0.35rem;">Camp (optional)</label>
-            <select id="sysMarkCamp" style="width:100%;padding:0.6rem;border:1px solid var(--border-color);border-radius:var(--radius-sm);">
+          <div class="prs-filter-field">
+            <label for="sysMarkActivity">Activity</label>
+            <select id="sysMarkActivity" class="prs-filter-select" disabled>
+              <option value="">All activities</option>
+            </select>
+          </div>
+          <div class="prs-filter-field">
+            <label for="sysMarkCamp">Camp (optional)</label>
+            <select id="sysMarkCamp" class="prs-filter-select" disabled>
               <option value="">All camps</option>
             </select>
           </div>
@@ -9444,23 +9450,130 @@ const AdminPage = (function () {
           <button class="btn btn-primary" id="sysMarkSubmitBtn">Record Attendance</button>
           <div id="sysMarkStatus" style="margin-top:0.75rem;"></div>
         </div>
+
+        <hr style="margin:1.5rem 0;border:none;border-top:1px solid var(--border-soft);" />
+
+        <div id="sysMarkAuditSection">
+          <h3 style="margin-bottom:0.35rem;">Admin-marked attendance (Super Admin only)</h3>
+          <p class="info info-muted" style="margin-bottom:0.85rem;">
+            This audit trail shows who recorded attendance on behalf of staff. It is visible only here — PRS attendance views for other admins show no difference from field scans.
+          </p>
+          <div id="sysMarkAuditWrap" class="table-wrapper">
+            <p class="info info-muted">Loading audit trail…</p>
+          </div>
+        </div>
       </section>
     `;
 
     const evSel   = document.getElementById('sysMarkEvent');
+    const actSel  = document.getElementById('sysMarkActivity');
     const campSel = document.getElementById('sysMarkCamp');
     const asgWrap = document.getElementById('sysMarkAsgWrap');
     const form    = document.getElementById('sysMarkForm');
+    const auditWrap = document.getElementById('sysMarkAuditWrap');
     let selectedAssignment = null;
 
     function selectAssignment(asg) {
       selectedAssignment = asg;
       const lbl = document.getElementById('sysMarkStaffLabel');
       if (lbl) lbl.textContent =
-        `Staff: ${asg.staffName}  |  Phone: ${asg.phone}  |  Camp: ${asg.campName || asg.campId}`;
+        `Staff: ${asg.staffName}  |  Phone: ${asg.phone}  |  Activity: ${asg.assignmentTitle || '—'}  |  Camp: ${asg.campName || asg.campId}`;
       form.style.display = 'block';
       const statusEl = document.getElementById('sysMarkStatus');
       if (statusEl) statusEl.innerHTML = '';
+    }
+
+    function parseAdminMarkExtra(extra) {
+      const raw = (extra && extra.extra) ? String(extra.extra) : '';
+      const out = { assignmentId: '', staff: '', activity: '', date: '', markedBy: '' };
+      raw.split('|').forEach(part => {
+        const p = part.trim();
+        if (p.indexOf('AssignmentID=') === 0) out.assignmentId = p.slice(13).trim();
+        else if (p.indexOf('Staff=') === 0) out.staff = p.slice(6).trim();
+        else if (p.indexOf('Activity=') === 0) out.activity = p.slice(9).trim();
+        else if (p.indexOf('Date=') === 0) out.date = p.slice(5).trim();
+        else if (p.indexOf('MarkedBy=') === 0) out.markedBy = p.slice(9).trim();
+      });
+      return out;
+    }
+
+    async function loadAdminMarkAudit() {
+      if (!auditWrap || adminRole !== 'SUPER_ADMIN') return;
+      auditWrap.innerHTML = '<p class="info info-muted">Loading audit trail…</p>';
+      try {
+        const res = await Api.call('getAuditLogs', { key: adminKey, limit: 400 });
+        const allLogs = (res && res.data && res.data.logs) || [];
+        const markLogs = allLogs.filter(l => {
+          const t = String(l.actionType || '');
+          return t.indexOf('PRS_ADMIN_MARK_') === 0;
+        });
+        if (!markLogs.length) {
+          auditWrap.innerHTML = '<p class="info info-muted">No admin-marked attendance records yet.</p>';
+          return;
+        }
+        auditWrap.innerHTML = `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Marked by</th>
+                <th>Action</th>
+                <th>Staff</th>
+                <th>Activity</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${markLogs.map(l => {
+                const details = parseAdminMarkExtra(l.extra);
+                const when = l.timestamp ? new Date(l.timestamp) : null;
+                const whenStr = when && !isNaN(when.getTime())
+                  ? when.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+                  : '—';
+                const actionLabel = String(l.actionType || '').replace('PRS_ADMIN_MARK_', '');
+                return `
+                  <tr>
+                    <td>${esc(whenStr)}</td>
+                    <td><strong>${esc(details.markedBy || l.actor || '—')}</strong></td>
+                    <td><span class="badge badge-${actionLabel === 'SIGN_IN' ? 'success' : 'muted'}">${esc(actionLabel)}</span></td>
+                    <td>${esc(details.staff || '—')}</td>
+                    <td>${esc(details.activity || '—')}</td>
+                    <td>${esc(details.date || '—')}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (e) {
+        auditWrap.innerHTML = `<p class="info info-error">${esc(e.message || 'Could not load audit trail.')}</p>`;
+      }
+    }
+
+    async function loadMarkActivities() {
+      actSel.innerHTML = '<option value="">All activities</option>';
+      campSel.innerHTML = '<option value="">All camps</option>';
+      if (!evSel.value) {
+        actSel.disabled = true;
+        campSel.disabled = true;
+        return;
+      }
+      actSel.disabled = false;
+      campSel.disabled = false;
+      try {
+        const r = await Api.call('prsListAssignmentDefs', {
+          key: adminKey,
+          eventId: evSel.value,
+          campId: '',
+        });
+        const defs = (r && r.data && r.data.assignmentDefs) || [];
+        defs.forEach(d => {
+          const o = document.createElement('option');
+          o.value = d.assignmentDefId;
+          o.textContent = d.title;
+          actSel.appendChild(o);
+        });
+      } catch (e) { /* ignore */ }
     }
 
     async function loadMarkCamps() {
@@ -9482,7 +9595,7 @@ const AdminPage = (function () {
       selectedAssignment = null;
       form.style.display = 'none';
       if (!evSel.value) {
-        asgWrap.innerHTML = '<p class="info info-muted">Select an event above to load assignments.</p>';
+        asgWrap.innerHTML = '<p class="info info-muted">Select an event above to load staff assignments.</p>';
         return;
       }
       asgWrap.innerHTML = '<div class="info info-muted">Loading…</div>';
@@ -9491,22 +9604,24 @@ const AdminPage = (function () {
           key: adminKey,
           eventId: evSel.value,
           campId: campSel.value || '',
+          assignmentDefId: actSel.value || '',
         });
         const rows = (r && r.data && r.data.assignments) || [];
         if (rows.length === 0) {
-          asgWrap.innerHTML = '<p class="info info-muted">No assignments for this event/camp.</p>';
+          asgWrap.innerHTML = '<p class="info info-muted">No staff assignments for this event, activity, or camp.</p>';
           return;
         }
         asgWrap.innerHTML = `
           <table class="data-table">
             <thead>
-              <tr><th>Name</th><th>Phone</th><th>Department</th><th>Camp</th><th>Status</th><th></th></tr>
+              <tr><th>Name</th><th>Phone</th><th>Activity</th><th>Department</th><th>Camp</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
               ${rows.map(a => `
                 <tr data-asg-id="${esc(a.assignmentId)}">
                   <td>${esc(a.staffName)}</td>
                   <td>${esc(a.phone)}</td>
+                  <td>${esc(a.assignmentTitle || '—')}</td>
                   <td>${esc(a.department || '')}</td>
                   <td>${esc(a.campName || a.campId || '')}</td>
                   <td><span class="badge badge-${String(a.status).toLowerCase() === 'active' ? 'success' : 'muted'}">${esc(a.status)}</span></td>
@@ -9535,7 +9650,12 @@ const AdminPage = (function () {
       }
     }
 
-    evSel.addEventListener('change', async () => { await loadMarkCamps(); await loadMarkAssignments(); });
+    evSel.addEventListener('change', async () => {
+      await loadMarkActivities();
+      await loadMarkCamps();
+      await loadMarkAssignments();
+    });
+    actSel.addEventListener('change', loadMarkAssignments);
     campSel.addEventListener('change', loadMarkAssignments);
 
     document.getElementById('sysMarkSubmitBtn').addEventListener('click', async () => {
@@ -9558,6 +9678,7 @@ const AdminPage = (function () {
         UI.closeLoading();
         statusEl.innerHTML =
           `<span class="info info-success">✓ ${esc(r.message || 'Recorded successfully.')}</span>`;
+        await loadAdminMarkAudit();
         await UI.showSuccess('Done', r.message || 'Attendance recorded successfully.');
       } catch (e) {
         UI.closeLoading();
@@ -9566,6 +9687,8 @@ const AdminPage = (function () {
         await UI.showError('Failed', e.message || 'Could not record attendance.');
       }
     });
+
+    await loadAdminMarkAudit();
   }
 
   async function loadModuleResetSheets() {
