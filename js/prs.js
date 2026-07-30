@@ -836,7 +836,7 @@
     const isEdit = !!existing;
     const allEvents = isEdit ? [] : await loadAllEvents();
     const copyEventOptions = allEvents.length
-      ? otherEvents.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)} (${esc(e.status)})</option>`).join('')
+      ? allEvents.map(e => `<option value="${esc(e.eventId)}">${esc(e.eventName)} (${esc(e.status)})</option>`).join('')
       : '';
 
     const { value: formValues } = await Swal.fire({
