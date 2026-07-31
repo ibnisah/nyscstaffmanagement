@@ -33,7 +33,30 @@
     .prs-asg-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.08)); }
     .prs-asg-card .asg-title { font-weight: 700; color: var(--ink, #111827); }
     .prs-asg-card .asg-meta  { font-size: 0.82rem; color: var(--text-muted, #6b7280); }
+    .prs-asg-card .asg-mode  {
+      display: inline-block;
+      margin-top: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .prs-asg-card .asg-mode.mode-materials { background: #eff6ff; color: #1d4ed8; }
     .prs-asg-list  { display: grid; gap: 0.65rem; margin-top: 0.75rem; }
+    .prs-materials-only-banner {
+      background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+      border: 1px solid rgba(29, 78, 216, 0.2);
+      border-radius: var(--radius, 8px);
+      padding: 1rem 1.1rem;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+      color: #1e3a8a;
+    }
+    #attendancePanel.hidden { display: none !important; }
 
     .prs-mat-card {
       border: 1px solid var(--border-soft, #e5e7eb);
@@ -168,12 +191,12 @@
       <div id="phoneStatus" class="status" style="margin-top: 1rem;"></div>
     </section>
 
-    <!-- STEP 1b: Assignment picker (only when staff has more than one) -->
+    <!-- STEP 1b: Activity picker (when staff has more than one assignment at this camp) -->
     <section class="card prs-step" id="stepPickAssignment">
-      <h1>Pick your assignment</h1>
-      <p class="subtitle">
-        You are on the roster for several activities at this camp. Tap the one
-        you are attending right now.
+      <h1>Choose your activity</h1>
+      <p class="subtitle" id="pickAssignmentSubtitle">
+        You are assigned to more than one activity at this camp. Select the one
+        you want to open now — you can switch later from your dashboard.
       </p>
       <div class="prs-asg-list" id="assignmentList"></div>
       <button type="button" class="btn btn-secondary btn-block" id="changePhoneBtn" style="margin-top:1rem;">
@@ -186,13 +209,18 @@
       <h1 id="dashStaffName">Staff</h1>
       <p class="subtitle" id="dashCampLine"></p>
 
-      <div class="prs-mini-dashboard">
+      <div class="prs-mini-dashboard" id="attendanceStatsPanel">
         <div class="prs-stat"><div class="prs-stat-value" id="statRequired">-</div><div class="prs-stat-label">Required Days</div></div>
         <div class="prs-stat"><div class="prs-stat-value" id="statCompleted">-</div><div class="prs-stat-label">Completed Days</div></div>
         <div class="prs-stat"><div class="prs-stat-value" id="statRemaining">-</div><div class="prs-stat-label">Remaining</div></div>
       </div>
 
-      <div style="border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-top: 1rem;">
+      <div id="materialsOnlyBanner" class="prs-materials-only-banner" style="display:none;">
+        📎 <strong>Materials access</strong> — this activity does not require attendance sign-in.
+        Browse and download the files below.
+      </div>
+
+      <div style="border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-top: 1rem;" id="attendancePanel">
         <h3 style="margin-top: 0;">Today</h3>
         <div class="prs-meta-row">
           <span class="prs-meta-label">Sign-In</span>
@@ -235,7 +263,7 @@
 
       <button type="button" class="btn btn-secondary btn-block" id="switchAssignmentBtn"
               style="display:none;margin-top:1rem;">
-        🔄 Switch assignment
+        🔄 Switch activity
       </button>
     </section>
 
@@ -308,6 +336,21 @@
           case 'MANUAL':           return 'Released manually by admin';
           default: return 'Release rule: ' + String(rule || '');
         }
+      }
+
+      function attendanceModeLabel(mode) {
+        const m = String(mode || '').toUpperCase();
+        const map = {
+          STANDARD: 'Standard attendance',
+          MATERIAL_GATED: 'Material-gated',
+          SIGN_IN_ONLY: 'Sign-in only',
+          MATERIALS_ONLY: 'Materials only',
+        };
+        return map[m] || (m ? m.replace(/_/g, ' ') : '');
+      }
+
+      function isMaterialsOnlyMode(mode) {
+        return String(mode || '').toUpperCase() === 'MATERIALS_ONLY';
       }
 
       function eligibilityMessage(code) {
@@ -392,6 +435,9 @@
             resolvePhoneAndShowDashboard(phone, chosenAssignmentId);
             return;
           }
+          document.getElementById('pickAssignmentSubtitle').textContent =
+            'Welcome, ' + (list[0].staffName || 'staff') + '. You have ' + list.length +
+            ' activities at this camp — tap one to open its dashboard.';
           renderAssignmentPicker(list);
           setStatus('phoneStatus', '');
           showStep('stepPickAssignment');
@@ -403,15 +449,20 @@
       function renderAssignmentPicker(list) {
         const host = document.getElementById('assignmentList');
         host.innerHTML = list.map(function (a) {
+          const mode = String(a.attendanceMode || '').toUpperCase();
           const meta = [
             a.department || '',
-            a.requiredDays ? (a.requiredDays + ' day' + (a.requiredDays > 1 ? 's' : '')) : '',
-            a.attendanceMode && a.attendanceMode !== 'STANDARD' ? a.attendanceMode.replace(/_/g, ' ') : '',
+            a.requiredDays && !isMaterialsOnlyMode(mode)
+              ? (a.requiredDays + ' day' + (a.requiredDays > 1 ? 's' : ''))
+              : '',
           ].filter(Boolean).join(' • ');
+          const modeLbl = attendanceModeLabel(a.attendanceMode);
+          const modeClass = isMaterialsOnlyMode(mode) ? ' asg-mode mode-materials' : ' asg-mode';
           return (
             '<div class="prs-asg-card" data-asg="' + escHtml(a.assignmentId) + '">' +
-              '<div class="asg-title">' + escHtml(a.title || 'Activity') + '</div>' +
+              '<div class="asg-title">' + escHtml(a.title || a.assignmentTitle || 'Activity') + '</div>' +
               (meta ? '<div class="asg-meta">' + escHtml(meta) + '</div>' : '') +
+              (modeLbl ? '<span class="' + modeClass.trim() + '">' + escHtml(modeLbl) + '</span>' : '') +
             '</div>'
           );
         }).join('');
@@ -446,8 +497,9 @@
 
           document.getElementById('dashStaffName').textContent = assignment.staffName || 'Staff';
           const asgTitle = assignment.assignmentTitle || assignment.title || 'Assignment';
+          const isMaterialsOnly = isMaterialsOnlyMode(assignment.attendanceMode);
           const modeLabel = assignment.attendanceMode && assignment.attendanceMode !== 'STANDARD'
-            ? ' • ' + assignment.attendanceMode.replace(/_/g, ' ')
+            ? ' • ' + attendanceModeLabel(assignment.attendanceMode)
             : '';
           document.getElementById('dashCampLine').innerHTML =
             '<strong>' + escHtml(asgTitle) + '</strong>' +
@@ -456,10 +508,31 @@
             (assignment.department ? ' • ' + escHtml(assignment.department) : '') +
             escHtml(modeLabel);
 
+          const statsPanel = document.getElementById('attendanceStatsPanel');
+          const attendancePanel = document.getElementById('attendancePanel');
+          const materialsBanner = document.getElementById('materialsOnlyBanner');
+          const actionRow = document.getElementById('actionRow');
+
+          if (isMaterialsOnly) {
+            if (statsPanel) statsPanel.style.display = 'none';
+            if (attendancePanel) attendancePanel.classList.add('hidden');
+            if (materialsBanner) materialsBanner.style.display = 'block';
+            if (actionRow) actionRow.style.display = 'none';
+            document.getElementById('actionNotice').textContent =
+              'No sign-in is required. Download materials below when they are available.';
+          } else {
+            if (statsPanel) statsPanel.style.display = '';
+            if (attendancePanel) attendancePanel.classList.remove('hidden');
+            if (materialsBanner) materialsBanner.style.display = 'none';
+            if (actionRow) actionRow.style.display = '';
+          }
+
           const isSignInOnly = String(assignment.attendanceMode || '').toUpperCase() === 'SIGN_IN_ONLY';
-          document.getElementById('statRequired').textContent = required;
-          document.getElementById('statCompleted').textContent = completed;
-          document.getElementById('statRemaining').textContent = remaining;
+          if (!isMaterialsOnly) {
+            document.getElementById('statRequired').textContent = required;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('statRemaining').textContent = remaining;
+          }
 
           document.getElementById('todaySignInBadge').innerHTML =
             d.todaySignedIn
@@ -509,7 +582,9 @@
           signOutBtnEl.disabled = false;
           let notice = '';
 
-          if (isSignInOnly) {
+          if (isMaterialsOnly) {
+            notice = 'Materials-only activity — use the list below to download files.';
+          } else if (isSignInOnly) {
             // Sign-in-only mode: never show a sign-out button. Each sign-in
             // counts toward RequiredDays.
             if (finished) {
@@ -720,9 +795,11 @@
           const res = await Prs.Staff.listStaffAssignments(apiPayload({ phone: currentPhone }));
           const list = (res && res.data && res.data.assignments) || [];
           if (list.length <= 1) {
-            Swal.fire({ icon: 'info', title: 'Only one assignment', text: 'You only have one assignment at this camp.' });
+            Swal.fire({ icon: 'info', title: 'Only one activity', text: 'You only have one activity at this camp.' });
             return;
           }
+          document.getElementById('pickAssignmentSubtitle').textContent =
+            'Select another activity at this camp to open its dashboard.';
           renderAssignmentPicker(list);
           showStep('stepPickAssignment');
         } catch (e) {

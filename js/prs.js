@@ -671,6 +671,7 @@
     { value: 'STANDARD',       label: 'Standard — daily sign-in + sign-out on the final day' },
     { value: 'MATERIAL_GATED', label: 'Material-gated — same as Standard, but materials are unlocked by sign-in' },
     { value: 'SIGN_IN_ONLY',   label: 'Sign-in only — no sign-out, one sign-in per required day' },
+    { value: 'MATERIALS_ONLY', label: 'Materials only — scan QR to access files; no attendance sign-in/out' },
   ];
   const PRS_RELEASE_RULES = [
     { value: 'IMMEDIATE',          label: 'Immediate — released the moment staff opens the assignment' },
