@@ -90,9 +90,48 @@ const Api = (function () {
     return BASE_URL + '?' + params.toString();
   }
 
+  // Apps Script serves every POST result from a one-time script.googleusercontent.com
+  // URL, and that handoff becomes unreliable when several requests are in flight at
+  // once — it 404s, or the redirect arrives back as a GET with the body gone. Running
+  // calls one at a time is what keeps the handoff stable.
+  let requestChain = Promise.resolve();
+
+  function queued(task) {
+    const run = requestChain.then(task, task);
+    requestChain = run.then(function () {}, function () {});
+    return run;
+  }
+
+  const READ_VERBS = ['list', 'get', 'search', 'validate', 'resolve', 'export', 'download'];
+
+  /** Leading verb of an action, e.g. prsListCamps -> "list", prsSignIn -> "sign". */
+  function actionVerb(action) {
+    const stripped = String(action || '').replace(/^(prs|hrm|admin)/, '');
+    const lower = stripped.match(/^([a-z]+)/);
+    if (lower) return lower[1].toLowerCase();
+    const upper = stripped.match(/^([A-Z][a-z]+)/);
+    return upper ? upper[1].toLowerCase() : '';
+  }
+
+  /**
+   * Which transient failures are safe to repeat.
+   *  - BODY_LOST: the redirect dropped the request body, so the server never ran the
+   *    action. Safe to repeat for anything, writes included.
+   *  - CONTENT_404: the script DID run and Google only failed to deliver the result,
+   *    so repeating is safe for idempotent reads but not for writes.
+   */
+  function isRetryable(err, action) {
+    if (!err) return false;
+    if (err.transient === 'BODY_LOST') return true;
+    if (err.transient === 'CONTENT_404') return READ_VERBS.indexOf(actionVerb(action)) !== -1;
+    return false;
+  }
+
   async function tryGetFallback(action, payload) {
     if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
-    const getRes = await fetch(buildApiUrl(action, payload), { method: 'GET' });
+    const getRes = await queued(function () {
+      return fetch(buildApiUrl(action, payload), { method: 'GET' });
+    });
     if (!getRes.ok) return null;
     try {
       const data = JSON.parse(await getRes.text());
@@ -103,23 +142,23 @@ const Api = (function () {
   }
 
   async function postToGas(url, bodyString, options) {
-    const timeout = options.timeout || REQUEST_TIMEOUT;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      // Apps Script always 302s POST responses to script.googleusercontent.com,
-      // so 'follow' is required to read the JSON payload. One request, no retries.
-      return await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: bodyString,
-        redirect: 'follow',
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    return queued(async function () {
+      const timeout = options.timeout || REQUEST_TIMEOUT;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      try {
+        // 'follow' is required: Apps Script 302s POST responses to its content server.
+        return await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: bodyString,
+          redirect: 'follow',
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
   }
 
   async function call(action, payload, options = {}) {
@@ -148,7 +187,7 @@ const Api = (function () {
       console.log('API Call:', { action, url, payload: redactSecrets(payload) });
     }
 
-    try {
+    async function attempt() {
       const res = await postToGas(url, body, options);
 
       if (options.debug !== false) {
@@ -165,16 +204,15 @@ const Api = (function () {
         let errorText = '';
         try { errorText = await res.text(); } catch (readErr) { /* ignore */ }
 
-        // Apps Script hands POST results back from a one-time script.googleusercontent.com
-        // URL. A 404 there is Google failing to serve that result — the script itself ran.
-        // Usual causes: more than one Google account signed in to this browser, or the
-        // deployment is not readable by the current session. Nothing in the request is wrong.
+        // A 404 from the content server means the script ran but Google could not hand
+        // back the result. Transient, and unrelated to anything in the request.
         if (res.status === 404 && /unable to open the file|Page not found/i.test(errorText)) {
-          throw new Error(
+          const contentErr = new Error(
             'Google could not return the result (404 from its content server, not from your script). '
-            + 'Check: (1) only ONE Google account signed in to this browser — try an incognito window, '
-            + '(2) the web app deployment is set to "Who has access: Anyone".'
+            + 'This is usually transient — please try again in a moment.'
           );
+          contentErr.transient = 'CONTENT_404';
+          throw contentErr;
         }
 
         if (options.debug !== false) {
@@ -190,7 +228,7 @@ const Api = (function () {
         data = JSON.parse(responseText);
       } catch (parseError) {
         console.error('Failed to parse JSON response:', parseError);
-        console.error('Response text:', responseText);
+        console.error('Response text:', String(responseText).slice(0, 300));
         throw new Error('Invalid response format from server. Please check server logs.');
       }
 
@@ -202,21 +240,42 @@ const Api = (function () {
         const message = (data && data.message) || 'Request failed.';
         const reason = (data && data.reason) || 'UNKNOWN';
 
-        // GAS redirect dropped the POST body — public PRS reads can be retried as GET.
+        // The redirect dropped the POST body. Public PRS reads keep their params in the
+        // URL so a GET can still answer them; anything else has to be sent again.
         if (/GET not supported/i.test(message) || reason === 'METHOD_NOT_ALLOWED') {
           const fallback = await tryGetFallback(action, payload);
           if (fallback) return fallback;
+          const lostErr = new Error(message);
+          lostErr.reason = reason;
+          lostErr.raw = data;
+          lostErr.transient = 'BODY_LOST';
+          throw lostErr;
         }
 
         if (options.debug !== false) {
           console.error('API Error - Reason:', reason);
           console.error('API Error - Message:', message);
-          console.error('API Error - Full response:', data);
         }
         const error = new Error(message);
         error.reason = reason;
         error.raw = data;
         throw error;
+      }
+
+      return data;
+    }
+
+    try {
+      let data;
+      try {
+        data = await attempt();
+      } catch (firstErr) {
+        if (!isRetryable(firstErr, action)) throw firstErr;
+        if (options.debug !== false) {
+          console.warn('API transient failure (' + firstErr.transient + '), retrying once:', action);
+        }
+        await new Promise(function (resolve) { setTimeout(resolve, 500); });
+        data = await attempt();
       }
 
       // Cache successful responses
@@ -243,8 +302,8 @@ const Api = (function () {
 
       if (err.message && (/GET not supported/i.test(err.message) || err.reason === 'METHOD_NOT_ALLOWED')) {
         throw new Error(
-          'Server received a GET request instead of POST. Hard-refresh this page (Ctrl+F5), ' +
-          'then redeploy the Apps Script web app (Deploy → New version) if login still fails.'
+          'Apps Script dropped the request body on redirect, and the retry failed too. '
+          + 'Please try again in a moment.'
         );
       }
 
