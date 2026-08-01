@@ -40,6 +40,78 @@ const Api = (function () {
     }
   }
 
+  // Public PRS read endpoints allowed via GET when POST body is lost after redirect.
+  const PRS_GET_FALLBACK_ACTIONS = [
+    'prsValidateCampQr',
+    'prsResolveAssignment',
+    'prsListStaffAssignments',
+    'prsGetStaffDashboard',
+    'prsListStaffMaterials',
+  ];
+
+  async function tryGetFallback(action, payload) {
+    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
+    const params = new URLSearchParams();
+    params.set('action', action);
+    const p = payload || {};
+    Object.keys(p).forEach(function (k) {
+      if (k === 'action') return;
+      if (p[k] != null && p[k] !== '') params.set(k, String(p[k]));
+    });
+    const getUrl = BASE_URL + '?' + params.toString();
+    const getRes = await fetch(getUrl, { method: 'GET' });
+    if (!getRes.ok) return null;
+    const text = await getRes.text();
+    try {
+      const data = JSON.parse(text);
+      return data && data.success === true ? data : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function postToGas(url, bodyString, options) {
+    const timeout = options.timeout || REQUEST_TIMEOUT;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const init = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: bodyString,
+      signal: controller.signal,
+      // Apps Script responds with 302. fetch with redirect:'follow' turns POST into GET
+      // and the server returns "GET not supported." — re-POST manually instead.
+      redirect: 'manual',
+    };
+
+    try {
+      let res = await fetch(url, init);
+
+      if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
+        let loc = res.headers.get('Location');
+        if (loc) {
+          if (loc.indexOf('action=') === -1 && url.indexOf('action=') !== -1) {
+            const actionMatch = url.match(/[?&]action=([^&]+)/);
+            if (actionMatch) {
+              loc += (loc.indexOf('?') === -1 ? '?' : '&') +
+                'action=' + actionMatch[1];
+            }
+          }
+          res = await fetch(loc, init);
+        }
+      }
+
+      clearTimeout(timeoutId);
+      return res;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
   async function call(action, payload, options = {}) {
     // Check if BASE_URL is set
     if (!BASE_URL || BASE_URL === 'YOUR_DEPLOYED_WEB_APP_URL_HERE') {
@@ -58,31 +130,16 @@ const Api = (function () {
     }
 
     const url = BASE_URL + '?action=' + encodeURIComponent(action);
-    const body = JSON.stringify(payload || {});
+    // Include action in body so routing still works if query params are lost on redirect.
+    const body = JSON.stringify(Object.assign({}, payload || {}, { action: action }));
 
     // Only log in development mode
     if (options.debug !== false) {
       console.log('API Call:', { action, url, payload });
     }
 
-    // Create AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout || REQUEST_TIMEOUT);
-
     try {
-      // Use 'text/plain' instead of 'application/json' to avoid CORS preflight issues
-      // Google Apps Script Web Apps handle CORS automatically, but preflight requests (OPTIONS) can fail
-      // The backend will parse the JSON string from the body using JSON.parse(e.postData.contents)
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain',
-        },
-        body,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      const res = await postToGas(url, body, options);
 
       if (options.debug !== false) {
         console.log('API Response Status:', res.status, res.statusText);
@@ -117,6 +174,13 @@ const Api = (function () {
       if (!data || data.success !== true) {
         const message = (data && data.message) || 'Request failed.';
         const reason = (data && data.reason) || 'UNKNOWN';
+
+        // Staff QR: retry as GET when Apps Script redirect stripped the POST body.
+        if (/GET not supported/i.test(message)) {
+          const fallback = await tryGetFallback(action, payload);
+          if (fallback) return fallback;
+        }
+
         if (options.debug !== false) {
           console.error('API Error - Reason:', reason);
           console.error('API Error - Message:', message);
@@ -136,20 +200,25 @@ const Api = (function () {
 
       return data;
     } catch (err) {
-      clearTimeout(timeoutId);
+      if (options.debug !== false) {
+        console.error('API Call Error:', err);
+      }
 
       // Handle timeout
       if (err.name === 'AbortError') {
         throw new Error('Request timeout. The server is taking too long to respond. Please try again.');
       }
 
-      if (options.debug !== false) {
-        console.error('API Call Error:', err);
+      // Provide more helpful error messages
+      if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+        throw new Error('Cannot connect to server. Check:\n1. Internet connection\n2. API URL is correct\n3. Apps Script is deployed');
       }
 
-      // Provide more helpful error messages
-      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-        throw new Error('Cannot connect to server. Check:\n1. Internet connection\n2. API URL is correct\n3. Apps Script is deployed');
+      if (err.message && /GET not supported/i.test(err.message)) {
+        throw new Error(
+          'Server received a GET request instead of POST. Refresh the page and try again. ' +
+          'If this persists, redeploy the Apps Script web app (Deploy → New version).'
+        );
       }
 
       throw err;
