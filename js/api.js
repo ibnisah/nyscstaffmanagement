@@ -146,8 +146,21 @@ const Api = (function () {
       if (!res.ok) {
         let errorText = '';
         try { errorText = await res.text(); } catch (readErr) { /* ignore */ }
+
+        // Apps Script hands POST results back from a one-time script.googleusercontent.com
+        // URL. A 404 there is Google failing to serve that result — the script itself ran.
+        // Usual causes: more than one Google account signed in to this browser, or the
+        // deployment is not readable by the current session. Nothing in the request is wrong.
+        if (res.status === 404 && /unable to open the file|Page not found/i.test(errorText)) {
+          throw new Error(
+            'Google could not return the result (404 from its content server, not from your script). '
+            + 'Check: (1) only ONE Google account signed in to this browser — try an incognito window, '
+            + '(2) the web app deployment is set to "Who has access: Anyone".'
+          );
+        }
+
         if (options.debug !== false) {
-          console.error('API Error Response:', errorText);
+          console.error('API Error Response:', String(errorText).slice(0, 300));
         }
         throw new Error(`Network error: ${res.status} ${res.statusText || ''}`.trim());
       }
