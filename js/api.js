@@ -40,35 +40,32 @@ const Api = (function () {
     }
   }
 
-  // Apps Script may follow POST with GET and drop the body; keep scalar fields in
-  // the query string so doGet + parseRequestBody can still route the request.
-  const MAX_URL_QUERY_LEN = 1800;
+  // Public PRS read endpoints. Apps Script can turn a POST into a GET when it
+  // redirects, which drops the body. These carry no credentials, so they are the
+  // only actions safe to retry over GET with their params in the URL.
+  const PRS_GET_FALLBACK_ACTIONS = [
+    'prsValidateCampQr',
+    'prsResolveAssignment',
+    'prsListStaffAssignments',
+    'prsGetStaffDashboard',
+    'prsListStaffMaterials',
+  ];
 
-  function buildApiUrl(action, payload) {
+  async function tryGetFallback(action, payload) {
+    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
     const params = new URLSearchParams();
     params.set('action', action);
     const p = payload || {};
-    let built = params.toString();
     Object.keys(p).forEach(function (k) {
       if (k === 'action') return;
       const v = p[k];
-      if (v == null || v === '') return;
-      if (typeof v === 'object') return;
-      const next = built + (built ? '&' : '') + encodeURIComponent(k) + '=' + encodeURIComponent(String(v));
-      if (next.length > MAX_URL_QUERY_LEN) return;
+      if (v == null || v === '' || typeof v === 'object') return;
       params.set(k, String(v));
-      built = params.toString();
     });
-    return BASE_URL + '?' + params.toString();
-  }
-
-  async function tryGetFallback(action, payload) {
-    const getUrl = buildApiUrl(action, payload);
-    const getRes = await fetch(getUrl, { method: 'GET' });
+    const getRes = await fetch(BASE_URL + '?' + params.toString(), { method: 'GET' });
     if (!getRes.ok) return null;
-    const text = await getRes.text();
     try {
-      const data = JSON.parse(text);
+      const data = JSON.parse(await getRes.text());
       return data && data.success === true ? data : null;
     } catch (e) {
       return null;
@@ -80,56 +77,24 @@ const Api = (function () {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const init = {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: bodyString,
-      signal: controller.signal,
-    };
-
     try {
-      // Primary: follow redirects (required for adminLogin and most GAS calls).
-      // Using redirect:'manual' alone returns status 0 (opaque) and breaks all API calls.
-      let res = await fetch(url, Object.assign({}, init, { redirect: 'follow' }));
-
-      // If GAS downgraded POST→GET, body is lost — try manual re-POST when Location is exposed.
-      if (res.ok) {
-        const peek = await res.clone().text();
-        try {
-          const peekData = JSON.parse(peek);
-          if (peekData && /GET not supported/i.test(peekData.message || '')) {
-            const manualRes = await fetch(url, Object.assign({}, init, { redirect: 'manual' }));
-            if (manualRes.status >= 301 && manualRes.status <= 308) {
-              let loc = manualRes.headers.get('Location');
-              if (loc) {
-                if (loc.indexOf('action=') === -1 && url.indexOf('action=') !== -1) {
-                  const actionMatch = url.match(/[?&]action=([^&]+)/);
-                  if (actionMatch) {
-                    loc += (loc.indexOf('?') === -1 ? '?' : '&') + 'action=' + actionMatch[1];
-                  }
-                }
-                res = await fetch(loc, init);
-              }
-            }
-          }
-        } catch (parsePeek) {
-          /* use original res */
-        }
-      }
-
+      // Apps Script always 302s POST responses to script.googleusercontent.com,
+      // so 'follow' is required to read the JSON payload. One request, no retries.
+      return await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: bodyString,
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+    } finally {
       clearTimeout(timeoutId);
-      return res;
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
     }
   }
 
   async function call(action, payload, options = {}) {
     // Check if BASE_URL is set
-    if (!BASE_URL || BASE_URL === 'AKfycbwprBU-at3dPlhQUP8QkiJFhrRLMFurW1ImrX0WNjTMmiqRAVWLPciB628TwNAidVl_KA') {
+    if (!BASE_URL || BASE_URL === 'YOUR_DEPLOYED_WEB_APP_URL_HERE') {
       throw new Error('API URL not configured. Please update BASE_URL in api.js with your deployed Apps Script web app URL.');
     }
 
@@ -144,8 +109,8 @@ const Api = (function () {
       }
     }
 
-    const url = buildApiUrl(action, payload);
-    // Include action in body for doPost; query string carries scalars when POST→GET redirect drops body.
+    const url = BASE_URL + '?action=' + encodeURIComponent(action);
+    // Include action in the body too, so routing still works if query params are lost on redirect.
     const body = JSON.stringify(Object.assign({}, payload || {}, { action: action }));
 
     // Only log in development mode
@@ -197,7 +162,7 @@ const Api = (function () {
         const message = (data && data.message) || 'Request failed.';
         const reason = (data && data.reason) || 'UNKNOWN';
 
-        // GAS redirect dropped the POST body — retry as GET (params are in the URL).
+        // GAS redirect dropped the POST body — public PRS reads can be retried as GET.
         if (/GET not supported/i.test(message) || reason === 'METHOD_NOT_ALLOWED') {
           const fallback = await tryGetFallback(action, payload);
           if (fallback) return fallback;
