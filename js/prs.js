@@ -67,6 +67,7 @@
     createAssignmentDef:    (key, body) => call('prsCreateAssignmentDef',    Object.assign({ key }, body)),
     updateAssignmentDef:    (key, body) => call('prsUpdateAssignmentDef',    Object.assign({ key }, body)),
     closeAssignmentDef:     (key, assignmentDefId) => call('prsCloseAssignmentDef', { key, assignmentDefId }),
+    deleteAssignmentDef:    (key, assignmentDefId) => call('prsDeleteAssignmentDef', { key, assignmentDefId }),
     listAssignmentDefs:     (key, eventId, campId) => call('prsListAssignmentDefs', {
       key, eventId, campId: campId || ''
     }),
@@ -556,6 +557,49 @@
 
   function isSuperAdmin_() {
     return String(ctx.adminRole || '').trim() === 'SUPER_ADMIN';
+  }
+
+  /** SUPER_ADMIN only — permanently remove a PRS activity and linked setup data. */
+  async function confirmDeleteActivity(def, onSuccess) {
+    if (!isSuperAdmin_()) {
+      err(new Error('Only Super Admin can delete activities.'));
+      return;
+    }
+    const title = def.title || 'this activity';
+    const c = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete activity permanently?',
+      html: `
+        <p>This will <strong>permanently remove</strong> <em>${esc(title)}</em> and all linked camps, roster, and materials.</p>
+        <p style="margin-top:0.75rem;font-size:0.9rem;color:var(--text-muted);">Attendance logs are kept for audit. This cannot be undone.</p>
+        <p style="margin-top:0.75rem;font-size:0.9rem;">Type <strong>${esc(title)}</strong> to confirm.</p>
+        <input id="prsDeleteDefConfirmInput" class="swal2-input" placeholder="Activity title" autocomplete="off" />
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Delete permanently',
+      confirmButtonColor: '#dc3545',
+      focusConfirm: false,
+      preConfirm: () => {
+        const typed = (document.getElementById('prsDeleteDefConfirmInput').value || '').trim();
+        if (typed !== String(title).trim()) {
+          Swal.showValidationMessage('Activity title does not match.');
+          return false;
+        }
+        return true;
+      },
+    });
+    if (!c.isConfirmed) return;
+    try {
+      const res = await PrsApi.deleteAssignmentDef(ctx.adminKey, def.assignmentDefId);
+      const retained = res && res.data && res.data.attendanceLogsRetained;
+      toast(
+        retained
+          ? 'Activity deleted. ' + retained + ' attendance log(s) retained for audit.'
+          : 'Activity permanently deleted.',
+        'success',
+      );
+      if (typeof onSuccess === 'function') onSuccess();
+    } catch (e) { err(e); }
   }
 
   /** True when the backend reports missing PRS v2 sheets. */
@@ -1271,6 +1315,7 @@
               <button class="btn btn-xs btn-primary prs-def-open">Open</button>
               <button class="btn btn-xs btn-secondary prs-def-edit">Edit</button>
               <button class="btn btn-xs btn-secondary prs-def-dup" title="Duplicate this activity">Duplicate</button>
+              ${isSuperAdmin_() ? '<button class="btn btn-xs btn-danger prs-def-delete" title="Super Admin only">Delete</button>' : ''}
             ` },
           ],
           onAfterRender: (tbody) => {
@@ -1288,6 +1333,17 @@
               const defId = b.closest('tr').dataset.defId;
               const def = defs.find(x => String(x.assignmentDefId) === defId);
               if (def) duplicateActivityPrompt(def, evSel.value, () => reloadDefs());
+            }));
+            tbody.querySelectorAll('.prs-def-delete').forEach(b => b.addEventListener('click', () => {
+              const defId = b.closest('tr').dataset.defId;
+              const def = defs.find(x => String(x.assignmentDefId) === defId);
+              if (def) {
+                confirmDeleteActivity(def, () => {
+                  asgNav.selectedDefId = null;
+                  detailEl.innerHTML = '';
+                  reloadDefs();
+                });
+              }
             }));
           },
         });
@@ -1529,6 +1585,7 @@
           <div class="prs-asg-detail-actions">
             <button type="button" class="btn btn-sm btn-secondary" id="prsDefEditBtn">Edit</button>
             ${def.status === 'ACTIVE' ? '<button type="button" class="btn btn-sm btn-danger" id="prsDefCloseBtn">Close Activity</button>' : ''}
+            ${isSuperAdmin_() ? '<button type="button" class="btn btn-sm btn-danger" id="prsDefDeleteBtn" title="Super Admin only">Delete permanently</button>' : ''}
             <button type="button" class="btn btn-sm btn-secondary" id="prsDefBackBtn">← Back</button>
           </div>
         </div>
@@ -1588,6 +1645,14 @@
         if (typeof onParentReload === 'function') onParentReload();
         mountEl.innerHTML = '';
       } catch (e) { err(e); }
+    });
+    const deleteBtn = document.getElementById('prsDefDeleteBtn');
+    if (deleteBtn) deleteBtn.addEventListener('click', () => {
+      confirmDeleteActivity(def, () => {
+        asgNav.selectedDefId = null;
+        if (typeof onParentReload === 'function') onParentReload();
+        mountEl.innerHTML = '';
+      });
     });
     document.getElementById('prsDefBackBtn').addEventListener('click', () => {
       asgNav.selectedDefId = null;

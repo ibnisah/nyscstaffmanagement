@@ -40,25 +40,30 @@ const Api = (function () {
     }
   }
 
-  // Public PRS read endpoints allowed via GET when POST body is lost after redirect.
-  const PRS_GET_FALLBACK_ACTIONS = [
-    'prsValidateCampQr',
-    'prsResolveAssignment',
-    'prsListStaffAssignments',
-    'prsGetStaffDashboard',
-    'prsListStaffMaterials',
-  ];
+  // Apps Script may follow POST with GET and drop the body; keep scalar fields in
+  // the query string so doGet + parseRequestBody can still route the request.
+  const MAX_URL_QUERY_LEN = 1800;
 
-  async function tryGetFallback(action, payload) {
-    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
+  function buildApiUrl(action, payload) {
     const params = new URLSearchParams();
     params.set('action', action);
     const p = payload || {};
+    let built = params.toString();
     Object.keys(p).forEach(function (k) {
       if (k === 'action') return;
-      if (p[k] != null && p[k] !== '') params.set(k, String(p[k]));
+      const v = p[k];
+      if (v == null || v === '') return;
+      if (typeof v === 'object') return;
+      const next = built + (built ? '&' : '') + encodeURIComponent(k) + '=' + encodeURIComponent(String(v));
+      if (next.length > MAX_URL_QUERY_LEN) return;
+      params.set(k, String(v));
+      built = params.toString();
     });
-    const getUrl = BASE_URL + '?' + params.toString();
+    return BASE_URL + '?' + params.toString();
+  }
+
+  async function tryGetFallback(action, payload) {
+    const getUrl = buildApiUrl(action, payload);
     const getRes = await fetch(getUrl, { method: 'GET' });
     if (!getRes.ok) return null;
     const text = await getRes.text();
@@ -139,8 +144,8 @@ const Api = (function () {
       }
     }
 
-    const url = BASE_URL + '?action=' + encodeURIComponent(action);
-    // Include action in body so routing still works if query params are lost on redirect.
+    const url = buildApiUrl(action, payload);
+    // Include action in body for doPost; query string carries scalars when POST→GET redirect drops body.
     const body = JSON.stringify(Object.assign({}, payload || {}, { action: action }));
 
     // Only log in development mode
@@ -192,8 +197,8 @@ const Api = (function () {
         const message = (data && data.message) || 'Request failed.';
         const reason = (data && data.reason) || 'UNKNOWN';
 
-        // Staff QR: retry as GET when Apps Script redirect stripped the POST body.
-        if (/GET not supported/i.test(message)) {
+        // GAS redirect dropped the POST body — retry as GET (params are in the URL).
+        if (/GET not supported/i.test(message) || reason === 'METHOD_NOT_ALLOWED') {
           const fallback = await tryGetFallback(action, payload);
           if (fallback) return fallback;
         }
@@ -231,10 +236,10 @@ const Api = (function () {
         throw new Error('Cannot connect to server. Check:\n1. Internet connection\n2. API URL is correct\n3. Apps Script is deployed');
       }
 
-      if (err.message && /GET not supported/i.test(err.message)) {
+      if (err.message && (/GET not supported/i.test(err.message) || err.reason === 'METHOD_NOT_ALLOWED')) {
         throw new Error(
-          'Server received a GET request instead of POST. Refresh the page and try again. ' +
-          'If this persists, redeploy the Apps Script web app (Deploy → New version).'
+          'Server received a GET request instead of POST. Hard-refresh this page (Ctrl+F5), ' +
+          'then redeploy the Apps Script web app (Deploy → New version) if login still fails.'
         );
       }
 
