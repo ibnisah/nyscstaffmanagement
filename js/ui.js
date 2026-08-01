@@ -722,9 +722,7 @@ const AdminPage = (function () {
     try {
       UI.showLoading('Authenticating', 'Please wait while we verify your credentials...');
 
-      console.log('Attempting admin login with key:', key);
       const res = await Api.call('adminLogin', { key });
-      console.log('Login response:', res);
 
       UI.closeLoading();
 

@@ -40,6 +40,24 @@ const Api = (function () {
     }
   }
 
+  const SENSITIVE_FIELDS = [
+    'key', 'adminKey', 'token', 'adminToken', 'sessionToken', 'uploadToken', 'qrToken', 'password',
+  ];
+
+  /** Strip credentials so they never reach the browser console or an error report. */
+  function redactSecrets(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(redactSecrets);
+    const out = {};
+    Object.keys(value).forEach(function (k) {
+      const v = value[k];
+      if (v && SENSITIVE_FIELDS.indexOf(k) !== -1) out[k] = '[redacted]';
+      else if (v && typeof v === 'object') out[k] = redactSecrets(v);
+      else out[k] = v;
+    });
+    return out;
+  }
+
   // Public PRS read endpoints. Apps Script can turn a POST into a GET when it
   // redirects, which drops the body. These carry no credentials, so they are the
   // only actions safe to retry over GET with their params in the URL.
@@ -127,7 +145,7 @@ const Api = (function () {
 
     // Only log in development mode
     if (options.debug !== false) {
-      console.log('API Call:', { action, url, payload });
+      console.log('API Call:', { action, url, payload: redactSecrets(payload) });
     }
 
     try {
@@ -166,9 +184,6 @@ const Api = (function () {
       }
 
       const responseText = await res.text();
-      if (options.debug !== false) {
-        console.log('API Response Text (raw):', responseText);
-      }
 
       let data;
       try {
@@ -180,7 +195,7 @@ const Api = (function () {
       }
 
       if (options.debug !== false) {
-        console.log('API Response Data (parsed):', data);
+        console.log('API Response Data (parsed):', redactSecrets(data));
       }
 
       if (!data || data.success !== true) {
