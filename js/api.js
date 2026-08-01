@@ -129,7 +129,7 @@ const Api = (function () {
 
   async function call(action, payload, options = {}) {
     // Check if BASE_URL is set
-    if (!BASE_URL || BASE_URL === 'YOUR_DEPLOYED_WEB_APP_URL_HERE') {
+    if (!BASE_URL || BASE_URL === 'https://script.google.com/macros/s/AKfycbwprBU-at3dPlhQUP8QkiJFhrRLMFurW1ImrX0WNjTMmiqRAVWLPciB628TwNAidVl_KA/exec') {
       throw new Error('API URL not configured. Please update BASE_URL in api.js with your deployed Apps Script web app URL.');
     }
 
