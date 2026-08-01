@@ -51,18 +51,30 @@ const Api = (function () {
     'prsListStaffMaterials',
   ];
 
-  async function tryGetFallback(action, payload) {
-    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
+  /**
+   * Apps Script sometimes answers a POST with a redirect that the browser follows
+   * as a GET, discarding the body. For the public PRS reads we therefore repeat the
+   * scalar params in the query string so doGet can still serve the request. Every
+   * other action sends `action` only, so admin keys never reach a URL or server log.
+   */
+  function buildApiUrl(action, payload) {
     const params = new URLSearchParams();
     params.set('action', action);
-    const p = payload || {};
-    Object.keys(p).forEach(function (k) {
-      if (k === 'action') return;
-      const v = p[k];
-      if (v == null || v === '' || typeof v === 'object') return;
-      params.set(k, String(v));
-    });
-    const getRes = await fetch(BASE_URL + '?' + params.toString(), { method: 'GET' });
+    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) !== -1) {
+      const p = payload || {};
+      Object.keys(p).forEach(function (k) {
+        if (k === 'action') return;
+        const v = p[k];
+        if (v == null || v === '' || typeof v === 'object') return;
+        params.set(k, String(v));
+      });
+    }
+    return BASE_URL + '?' + params.toString();
+  }
+
+  async function tryGetFallback(action, payload) {
+    if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) === -1) return null;
+    const getRes = await fetch(buildApiUrl(action, payload), { method: 'GET' });
     if (!getRes.ok) return null;
     try {
       const data = JSON.parse(await getRes.text());
@@ -109,7 +121,7 @@ const Api = (function () {
       }
     }
 
-    const url = BASE_URL + '?action=' + encodeURIComponent(action);
+    const url = buildApiUrl(action, payload);
     // Include action in the body too, so routing still works if query params are lost on redirect.
     const body = JSON.stringify(Object.assign({}, payload || {}, { action: action }));
 
