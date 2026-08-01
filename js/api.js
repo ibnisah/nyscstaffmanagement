@@ -82,25 +82,35 @@ const Api = (function () {
       },
       body: bodyString,
       signal: controller.signal,
-      // Apps Script responds with 302. fetch with redirect:'follow' turns POST into GET
-      // and the server returns "GET not supported." — re-POST manually instead.
-      redirect: 'manual',
     };
 
     try {
-      let res = await fetch(url, init);
+      // Primary: follow redirects (required for adminLogin and most GAS calls).
+      // Using redirect:'manual' alone returns status 0 (opaque) and breaks all API calls.
+      let res = await fetch(url, Object.assign({}, init, { redirect: 'follow' }));
 
-      if (res.status === 301 || res.status === 302 || res.status === 303 || res.status === 307 || res.status === 308) {
-        let loc = res.headers.get('Location');
-        if (loc) {
-          if (loc.indexOf('action=') === -1 && url.indexOf('action=') !== -1) {
-            const actionMatch = url.match(/[?&]action=([^&]+)/);
-            if (actionMatch) {
-              loc += (loc.indexOf('?') === -1 ? '?' : '&') +
-                'action=' + actionMatch[1];
+      // If GAS downgraded POST→GET, body is lost — try manual re-POST when Location is exposed.
+      if (res.ok) {
+        const peek = await res.clone().text();
+        try {
+          const peekData = JSON.parse(peek);
+          if (peekData && /GET not supported/i.test(peekData.message || '')) {
+            const manualRes = await fetch(url, Object.assign({}, init, { redirect: 'manual' }));
+            if (manualRes.status >= 301 && manualRes.status <= 308) {
+              let loc = manualRes.headers.get('Location');
+              if (loc) {
+                if (loc.indexOf('action=') === -1 && url.indexOf('action=') !== -1) {
+                  const actionMatch = url.match(/[?&]action=([^&]+)/);
+                  if (actionMatch) {
+                    loc += (loc.indexOf('?') === -1 ? '?' : '&') + 'action=' + actionMatch[1];
+                  }
+                }
+                res = await fetch(loc, init);
+              }
             }
           }
-          res = await fetch(loc, init);
+        } catch (parsePeek) {
+          /* use original res */
         }
       }
 
@@ -145,12 +155,19 @@ const Api = (function () {
         console.log('API Response Status:', res.status, res.statusText);
       }
 
+      if (res.status === 0) {
+        throw new Error(
+          'Could not reach the server (network blocked or CORS). Check the API URL in api.js and redeploy the Apps Script web app.'
+        );
+      }
+
       if (!res.ok) {
-        const errorText = await res.text();
+        let errorText = '';
+        try { errorText = await res.text(); } catch (readErr) { /* ignore */ }
         if (options.debug !== false) {
           console.error('API Error Response:', errorText);
         }
-        throw new Error(`Network error: ${res.status} ${res.statusText}`);
+        throw new Error(`Network error: ${res.status} ${res.statusText || ''}`.trim());
       }
 
       const responseText = await res.text();
