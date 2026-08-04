@@ -5,7 +5,7 @@ const Api = (function () {
   // IMPORTANT: Replace this with your deployed Apps Script web app URL
   // Get this URL after deploying your Apps Script as a Web App
   // Format: https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
-  const BASE_URL = 'https://script.google.com/macros/s/AKfycbwprBU-at3dPlhQUP8QkiJFhrRLMFurW1ImrX0WNjTMmiqRAVWLPciB628TwNAidVl_KA/exec';
+  const BASE_URL = 'https://script.google.com/macros/s/AKfycbwaR7zEbUS5LRWvyGyBM_bYhmGhQ7bhZckiC5O6GL3dSexXcJfWKHNrDoo34HK0ssEQ4w/exec';
 
   // For testing, you can temporarily use a placeholder, but it won't work until you deploy:
   // const BASE_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
