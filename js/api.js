@@ -120,11 +120,41 @@ const Api = (function () {
    *  - CONTENT_404: the script DID run and Google only failed to deliver the result,
    *    so repeating is safe for idempotent reads but not for writes.
    */
+  /**
+   * Writes whose result was lost in transit can be confirmed by simply repeating them:
+   * the backend's own duplicate guard rejecting the second attempt is proof the first
+   * one landed. Maps the action to the guard reason that confirms it.
+   */
+  const WRITE_CONFIRMATIONS = {
+    prsSignIn: 'ALREADY_SIGNED_IN',
+    prsSignOut: 'ALREADY_SIGNED_OUT',
+  };
+
   function isRetryable(err, action) {
     if (!err) return false;
     if (err.transient === 'BODY_LOST') return true;
-    if (err.transient === 'CONTENT_404') return READ_VERBS.indexOf(actionVerb(action)) !== -1;
+    if (err.transient === 'CONTENT_404') {
+      return READ_VERBS.indexOf(actionVerb(action)) !== -1
+        || Object.prototype.hasOwnProperty.call(WRITE_CONFIRMATIONS, action);
+    }
     return false;
+  }
+
+  /**
+   * Turns a duplicate-guard rejection on a retried write into the success it actually
+   * represents, so a staff member is not told "already signed in" for a sign-in that
+   * only failed because Google lost the response.
+   */
+  function confirmWriteFromGuard(action, firstErr, retryErr) {
+    if (!firstErr || firstErr.transient !== 'CONTENT_404') return null;
+    const expected = WRITE_CONFIRMATIONS[action];
+    if (!expected || !retryErr || retryErr.reason !== expected) return null;
+    return {
+      success: true,
+      data: (retryErr.raw && retryErr.raw.data) || {},
+      message: 'Attendance recorded.',
+      recoveredFromLostResponse: true,
+    };
   }
 
   async function tryGetFallback(action, payload) {
@@ -266,16 +296,32 @@ const Api = (function () {
     }
 
     try {
-      let data;
-      try {
-        data = await attempt();
-      } catch (firstErr) {
-        if (!isRetryable(firstErr, action)) throw firstErr;
-        if (options.debug !== false) {
-          console.warn('API transient failure (' + firstErr.transient + '), retrying once:', action);
+      let data = null;
+
+      // Staff QR reads go over GET first. Apps Script's POST result handoff is the
+      // unreliable part; doGet answers these straight from the query string, which is
+      // why ?test=ping has been reliable throughout. Falls through to POST if it fails.
+      if (PRS_GET_FALLBACK_ACTIONS.indexOf(action) !== -1) {
+        data = await tryGetFallback(action, payload);
+      }
+
+      if (!data) {
+        try {
+          data = await attempt();
+        } catch (firstErr) {
+          if (!isRetryable(firstErr, action)) throw firstErr;
+          if (options.debug !== false) {
+            console.warn('API transient failure (' + firstErr.transient + '), retrying once:', action);
+          }
+          await new Promise(function (resolve) { setTimeout(resolve, 500); });
+          try {
+            data = await attempt();
+          } catch (retryErr) {
+            const confirmed = confirmWriteFromGuard(action, firstErr, retryErr);
+            if (!confirmed) throw retryErr;
+            data = confirmed;
+          }
         }
-        await new Promise(function (resolve) { setTimeout(resolve, 500); });
-        data = await attempt();
       }
 
       // Cache successful responses
