@@ -102,6 +102,11 @@ const Api = (function () {
     return run;
   }
 
+  // Observed in the field: the same call can lose its body on one attempt and lose its
+  // result on the next, then succeed on a third. Each failure is independent, so a
+  // couple of extra attempts converts a visible error into a slight delay.
+  const MAX_ATTEMPTS = 3;
+
   const READ_VERBS = ['list', 'get', 'search', 'validate', 'resolve', 'export', 'download'];
 
   /** Leading verb of an action, e.g. prsListCamps -> "list", prsSignIn -> "sign". */
@@ -305,22 +310,29 @@ const Api = (function () {
         data = await tryGetFallback(action, payload);
       }
 
-      if (!data) {
+      let firstTransient = null;
+      for (let attemptNo = 1; attemptNo <= MAX_ATTEMPTS && !data; attemptNo++) {
         try {
           data = await attempt();
-        } catch (firstErr) {
-          if (!isRetryable(firstErr, action)) throw firstErr;
-          if (options.debug !== false) {
-            console.warn('API transient failure (' + firstErr.transient + '), retrying once:', action);
-          }
-          await new Promise(function (resolve) { setTimeout(resolve, 500); });
-          try {
-            data = await attempt();
-          } catch (retryErr) {
-            const confirmed = confirmWriteFromGuard(action, firstErr, retryErr);
-            if (!confirmed) throw retryErr;
+        } catch (err) {
+          // A duplicate-guard rejection after we already lost a response proves the
+          // earlier attempt landed, so report it as the success it actually was.
+          const confirmed = confirmWriteFromGuard(action, firstTransient, err);
+          if (confirmed) {
             data = confirmed;
+            break;
           }
+
+          if (!isRetryable(err, action) || attemptNo === MAX_ATTEMPTS) throw err;
+
+          if (!firstTransient) firstTransient = err;
+          if (options.debug !== false) {
+            console.warn(
+              'API transient failure (' + err.transient + ') on attempt ' + attemptNo
+              + ' of ' + MAX_ATTEMPTS + ':', action
+            );
+          }
+          await new Promise(function (resolve) { setTimeout(resolve, 400 * attemptNo); });
         }
       }
 
