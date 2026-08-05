@@ -2,13 +2,9 @@
 // All calls go through this thin wrapper for consistent error handling.
 
 const Api = (function () {
-  // IMPORTANT: Replace this with your deployed Apps Script web app URL
-  // Get this URL after deploying your Apps Script as a Web App
-  // Format: https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec
-  const BASE_URL = 'https://script.google.com/macros/s/AKfycbwaR7zEbUS5LRWvyGyBM_bYhmGhQ7bhZckiC5O6GL3dSexXcJfWKHNrDoo34HK0ssEQ4w/exec';
-
-  // For testing, you can temporarily use a placeholder, but it won't work until you deploy:
-  // const BASE_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+  // Same-origin Netlify Function. It calls Apps Script server-side, so the browser
+  // never has to follow Google's unreliable ContentService redirect.
+  const BASE_URL = '/.netlify/functions/gas-proxy';
 
   // Request timeout in milliseconds (2 minutes for field capture / uploads; avoid premature timeout on slow Apps Script backend)
   const REQUEST_TIMEOUT = 120000;
@@ -198,8 +194,8 @@ const Api = (function () {
 
   async function call(action, payload, options = {}) {
     // Check if BASE_URL is set
-    if (!BASE_URL || BASE_URL === 'YOUR_DEPLOYED_WEB_APP_URL_HERE') {
-      throw new Error('API URL not configured. Please update BASE_URL in api.js with your deployed Apps Script web app URL.');
+    if (!BASE_URL) {
+      throw new Error('API gateway URL is not configured.');
     }
 
     // Check cache first (if not disabled)
