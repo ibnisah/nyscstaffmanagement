@@ -4,7 +4,10 @@
 const Api = (function () {
   // Same-origin Netlify Function. It calls Apps Script server-side, so the browser
   // never has to follow Google's unreliable ContentService redirect.
-  const BASE_URL = '/.netlify/functions/gas-proxy';
+  const GATEWAY_URL = '/.netlify/functions/gas-proxy';
+  const DIRECT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwaR7zEbUS5LRWvyGyBM_bYhmGhQ7bhZckiC5O6GL3dSexXcJfWKHNrDoo34HK0ssEQ4w/exec';
+  const BASE_URL = GATEWAY_URL;
+  let gatewayUnavailable = false;
 
   // Request timeout in milliseconds (2 minutes for field capture / uploads; avoid premature timeout on slow Apps Script backend)
   const REQUEST_TIMEOUT = 120000;
@@ -178,14 +181,30 @@ const Api = (function () {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       try {
-        // 'follow' is required: Apps Script 302s POST responses to its content server.
-        return await fetch(url, {
+        const init = {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: bodyString,
           redirect: 'follow',
           signal: controller.signal,
-        });
+        };
+        const directUrl = DIRECT_GAS_URL + (url.indexOf('?') >= 0 ? url.slice(url.indexOf('?')) : '');
+
+        // A frontend-only Netlify upload does not contain Functions. Detect that
+        // deployment error by the missing gateway marker and keep the app usable
+        // through the established direct path until the gateway is deployed.
+        if (gatewayUnavailable) return await fetch(directUrl, init);
+
+        const gatewayResponse = await fetch(url, init);
+        if (
+          gatewayResponse.status === 404 &&
+          gatewayResponse.headers.get('X-NYSC-API-Gateway') !== 'gas-proxy-v1'
+        ) {
+          gatewayUnavailable = true;
+          console.warn('Netlify API gateway is not deployed; temporarily using direct Apps Script API.');
+          return await fetch(directUrl, init);
+        }
+        return gatewayResponse;
       } finally {
         clearTimeout(timeoutId);
       }
