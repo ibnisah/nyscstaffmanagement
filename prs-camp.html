@@ -699,21 +699,31 @@
         const original = btn.textContent;
         btn.disabled = true;
         btn.textContent = 'Preparing…';
+        // Material access must not depend on the audit-log response. Open the
+        // approved file immediately while this click still has browser user
+        // activation; logging remains best-effort in the background.
+        let downloadStarted = false;
         try {
+          if (!url) {
+            Swal.fire({ icon: 'info', title: 'No download URL', text: 'This material has no URL configured. Please contact the admin.' });
+            return;
+          }
+          window.open(url, '_blank', 'noopener');
+          downloadStarted = true;
+          btn.textContent = 'Opening…';
           await Prs.Staff.logMaterialDownload(apiPayload({
             phone: currentPhone,
             assignmentId: assignment.assignmentId,
             materialId: materialId,
             channel: 'QR_PAGE',
           }));
-          if (url) {
-            // Open in a new tab so we don't unload the staff's dashboard.
-            window.open(url, '_blank', 'noopener');
-          } else {
-            Swal.fire({ icon: 'info', title: 'No download URL', text: 'This material has no URL configured. Please contact the admin.' });
-          }
         } catch (e) {
-          Swal.fire({ icon: 'error', title: 'Download blocked', text: (e && e.message) || 'Could not record this download.' });
+          // The file was already opened. Do not block staff because Google lost
+          // the optional audit-log response.
+          console.warn('Material download audit could not be recorded:', e);
+          if (!downloadStarted) {
+            Swal.fire({ icon: 'warning', title: 'Pop-up blocked', text: 'Please allow pop-ups for this page, then tap Download again.' });
+          }
         } finally {
           btn.disabled = false;
           btn.textContent = original;
